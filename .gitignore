@@ -5,3 +5,5 @@
 .env.local
 target
 node_modules
+backend-style
+contract-style
