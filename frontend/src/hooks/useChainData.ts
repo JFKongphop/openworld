@@ -91,7 +91,7 @@ export function useChainData(): ChainData {
         await Promise.all(
           rawLogs.map(async (log) => {
             if (!('args' in log)) return
-            const { owner, reportHash, tokenId, sessionId } = log.args as {
+            const { owner, reportHash, tokenId, sessionId } = log.args as unknown as {
               owner: string
               reportHash: string
               tokenId: bigint
