@@ -49,6 +49,10 @@ pub struct TripConfig {
   /// Budget in USD, parsed from "1200 USD" or plain "1200"
   #[serde(default = "default_budget", deserialize_with = "parse_budget")]
   pub budget_max: f64,
+  /// Owner wallet address — the EVM address that will receive the journey NFT.
+  /// If omitted, the operator wallet is used as the owner.
+  #[serde(default)]
+  pub owner: Option<String>,
 }
 
 fn default_origin() -> String {

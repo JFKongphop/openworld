@@ -84,14 +84,24 @@ pub async fn mint_journey_artifact(artifact: &JourneyArtifact) -> Result<String>
   println!("\x1b[2m  Session:    {}\x1b[0m", &artifact.session_id[..8]);
   println!("\x1b[2m  Contract:   {}\x1b[0m", contract_addr);
 
-  // mintAndRecord(string sessionId, string tripDescription, bytes32 memoryHash, bytes32 reportHash)
-  //
-  // Collection 1 — memoryHash: MD5 of the full execution context (session JSON)
-  // Collection 2 — reportHash: 0G Storage root of the Markdown travel report
-  //                            falls back to MD5 of session+artifact if not uploaded yet
+  // mintAndRecord(address,string,string,bytes32,bytes32)
+  // owner is the trip owner wallet (from trip.md); falls back to operator wallet
   let selector = &ethers::utils::keccak256(
-    b"mintAndRecord(string,string,bytes32,bytes32)",
+    b"mintAndRecord(address,string,string,bytes32,bytes32)",
   )[..4];
+
+  let owner_address: Address = artifact
+    .owner_address
+    .as_deref()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or_else(|| {
+      // fallback: derive from operator private key
+      std::env::var("OPERATOR_PRIVATE_KEY")
+        .ok()
+        .and_then(|k| k.trim_start_matches("0x").parse::<LocalWallet>().ok())
+        .map(|w| w.address())
+        .unwrap_or(Address::zero())
+    });
 
   // Collection 1 — memoryHash: 0G Storage root of the uploaded artifact JSON
   // If the 0G upload succeeded, storage_root_hash has the real root.
@@ -121,6 +131,7 @@ pub async fn mint_journey_artifact(artifact: &JourneyArtifact) -> Result<String>
   });
 
   let params = abi::encode(&[
+    Token::Address(owner_address),
     Token::String(artifact.session_id.clone()),
     Token::String(artifact.trip_summary.clone()),
     Token::FixedBytes(memory_hash.to_vec()),
@@ -133,7 +144,7 @@ pub async fn mint_journey_artifact(artifact: &JourneyArtifact) -> Result<String>
   let tx = TransactionRequest::new()
     .to(contract_addr)
     .data(Bytes::from(calldata))
-    .gas(300_000u64)
+    .gas(700_000u64)
     .gas_price(3_000_000_000u64)
     .chain_id(16602u64);
 

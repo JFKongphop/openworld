@@ -272,6 +272,7 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       on_chain_tx: None,
       created_at: stored.created_at,
       report_path: report_path.ok(),
+      owner_address: ctx.policy.trip.owner.clone(),
     };
 
     ctx.log(ActivityLog::success(

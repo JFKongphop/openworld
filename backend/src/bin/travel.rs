@@ -4,27 +4,28 @@ OpenWorld — Terminal CLI
 Run the full agentic travel pipeline directly in your terminal.
 No server needed — logs stream live with colour.
 
-Usage:
+Usage (quick — positional args):
   cargo run --bin travel -- <from> <dest> <days> <budget>
   cargo run --bin travel -- <from> <dest> <dep_date> <days> <budget>
   cargo run --bin travel -- <from> <dest> <dep_date> <ret_date> <budget>
 
-Examples:
-  cargo run --bin travel -- "Bangkok" "TYO" 5 1200             # departs today
-  cargo run --bin travel -- "Bangkok" "TYO" "2026-06-01" 5 1200 # departs Jun 1
-  cargo run --bin travel -- "Bangkok" "Japan" "2026-07-10" "2026-07-17" 2500
+Usage (file — full control via YAML):
+  cargo run --bin travel -- trip.md
+  cargo run --bin travel -- examples/tokyo.md
 
-Args:
-  <from>          Departure city   (default: Bangkok)
-  <dest>          City code or country (e.g. TYO, BKK, Japan)
-  <dep_date>      Optional departure date YYYY-MM-DD (default: today)
-  <days>          Trip duration in days  (default: 5)
-  <ret_date>      Optional return date   YYYY-MM-DD
-  <budget>        Total budget in USD    (default: 1200)
+File mode reads a travel.md YAML file directly, giving you full control over
+hotel rating, preferred airlines, per-night limits, and all policy settings.
+See examples/trip.md for the template.
+
+Examples:
+  cargo run --bin travel -- "Bangkok" "TYO" 5 1200
+  cargo run --bin travel -- "Bangkok" "TYO" "2026-06-01" 5 1200
+  cargo run --bin travel -- "Bangkok" "Japan" "2026-07-10" "2026-07-17" 2500
+  cargo run --bin travel -- examples/trip.md
 */
 
 use openworld::{
-  create_session, load_env, run_session, ActivityLog, LogType, SessionState,
+  create_session, load_env, parse_travel_md, run_session, ActivityLog, LogType, SessionState,
 };
 use tokio::sync::broadcast;
 
@@ -149,39 +150,80 @@ async fn main() {
 
   // ── Parse CLI args ─────────────────────────────────────────────────────────
   let args: Vec<String> = std::env::args().collect();
-  let origin      = args.get(1).map(String::as_str).unwrap_or("Bangkok");
-  let destination = args.get(2).map(String::as_str).unwrap_or("Tokyo");
 
-  // Three supported forms:
-  //   A) <days> <budget>                     — departs today
-  //   B) <dep_date YYYY-MM-DD> <days> <budget>  — departs on dep_date
-  //   C) <dep_date YYYY-MM-DD> <ret_date YYYY-MM-DD> <budget>
-  let today = today_iso();
-  let a3 = args.get(3).map(String::as_str).unwrap_or("");
-  let a4 = args.get(4).map(String::as_str).unwrap_or("");
-  let a5 = args.get(5).map(String::as_str).unwrap_or("");
+  // ── Detect file mode: first arg is a .md / .yaml / .yml file ──────────────
+  let first = args.get(1).map(String::as_str).unwrap_or("");
+  let is_file_mode = (first.ends_with(".md") || first.ends_with(".yaml") || first.ends_with(".yml"))
+    && std::path::Path::new(first).exists();
 
-  let is_date = |s: &str| s.len() == 10 && s.chars().nth(4) == Some('-');
+  let travel_md: String;
+  let (origin, destination, from_date, to_date, days, budget);
 
-  let (from_date, to_date, days, budget) = if let Some(n) = a3.parse::<u32>().ok() {
-    // Form A: <days> <budget>  — departs today
-    let d = n.max(1);
-    let budget: u32 = a4.parse().unwrap_or(1200);
-    (today.clone(), add_days(&today, d as i64), d, budget)
-  } else if is_date(a3) && !is_date(a4) {
-    // Form B: <dep_date> <days> <budget>  — explicit departure, duration in days
-    let dep = a3.to_string();
-    let d: u32 = a4.parse().unwrap_or(5).max(1);
-    let budget: u32 = a5.parse().unwrap_or(1200);
-    (dep.clone(), add_days(&dep, d as i64), d, budget)
+  if is_file_mode {
+    // ── File mode: read travel.md directly ──────────────────────────────────
+    travel_md = match std::fs::read_to_string(first) {
+      Ok(s) => s,
+      Err(e) => {
+        eprintln!("  {RED}✗ Cannot read file '{first}': {e}{RESET}");
+        std::process::exit(1);
+      }
+    };
+    // Parse to extract values for banner display
+    let policy = match parse_travel_md(&travel_md) {
+      Ok(p) => p,
+      Err(e) => {
+        eprintln!("  {RED}✗ Invalid travel.md: {e}{RESET}");
+        std::process::exit(1);
+      }
+    };
+    let today = today_iso();
+    origin      = policy.trip.origin.clone();
+    destination = policy.trip.destination.clone();
+    from_date   = if policy.trip.departure_date.is_empty() { today.clone() } else { policy.trip.departure_date.clone() };
+    to_date     = if policy.trip.return_date.is_empty() { add_days(&from_date, policy.trip.duration_days as i64) } else { policy.trip.return_date.clone() };
+    days        = policy.trip.duration_days;
+    budget      = policy.trip.budget_max as u32;
   } else {
-    // Form C: <dep_date> <ret_date> <budget>  — fully explicit dates
-    let dep = if is_date(a3) { a3.to_string() } else { today.clone() };
-    let ret = if is_date(a4) { a4.to_string() } else { add_days(&dep, 5) };
-    let budget: u32 = a5.parse().unwrap_or(1200);
-    let d = days_between(&dep, &ret);
-    (dep, ret, d, budget)
-  };
+    // ── Positional arg mode (existing behaviour) ───────────────────────────
+    let o = args.get(1).map(String::as_str).unwrap_or("Bangkok").to_string();
+    let d = args.get(2).map(String::as_str).unwrap_or("Tokyo").to_string();
+
+    // Three supported forms:
+    //   A) <days> <budget>                           — departs today
+    //   B) <dep_date YYYY-MM-DD> <days> <budget>     — explicit departure
+    //   C) <dep_date YYYY-MM-DD> <ret_date> <budget> — fully explicit dates
+    let today = today_iso();
+    let a3 = args.get(3).map(String::as_str).unwrap_or("");
+    let a4 = args.get(4).map(String::as_str).unwrap_or("");
+    let a5 = args.get(5).map(String::as_str).unwrap_or("");
+
+    let is_date = |s: &str| s.len() == 10 && s.chars().nth(4) == Some('-');
+
+    let (fd, td, dy, bg) = if let Ok(n) = a3.parse::<u32>() {
+      let d = n.max(1);
+      let b: u32 = a4.parse().unwrap_or(1200);
+      (today.clone(), add_days(&today, d as i64), d, b)
+    } else if is_date(a3) && !is_date(a4) {
+      let dep = a3.to_string();
+      let dy: u32 = a4.parse().unwrap_or(5).max(1);
+      let b: u32 = a5.parse().unwrap_or(1200);
+      (dep.clone(), add_days(&dep, dy as i64), dy, b)
+    } else {
+      let dep = if is_date(a3) { a3.to_string() } else { today.clone() };
+      let ret = if is_date(a4) { a4.to_string() } else { add_days(&dep, 5) };
+      let b: u32 = a5.parse().unwrap_or(1200);
+      let dy = days_between(&dep, &ret);
+      (dep, ret, dy, b)
+    };
+
+    origin      = o;
+    destination = d;
+    from_date   = fd;
+    to_date     = td;
+    days        = dy;
+    budget      = bg;
+    travel_md   = build_travel_md(&origin, &destination, &from_date, &to_date, days, budget);
+  }
 
   // ── Banner ─────────────────────────────────────────────────────────────────
   println!();
@@ -189,14 +231,14 @@ async fn main() {
   println!("  {BOLD}║       🌏  OpenWorld Agentic Travel CLI           ║{RESET}");
   println!("  {BOLD}╚══════════════════════════════════════════════════╝{RESET}");
   println!();
+  if is_file_mode {
+    println!("  {CYAN}Mode        :{RESET} {DIM}file → {first}{RESET}");
+  }
   println!("  {CYAN}From        :{RESET} {BOLD}{origin}{RESET}");
   println!("  {CYAN}Destination :{RESET} {BOLD}{destination}{RESET}");
   println!("  {CYAN}Dates       :{RESET} {from_date} → {to_date}  ({days} days)");
   println!("  {CYAN}Budget      :{RESET} ${budget} USD");
   println!();
-
-  // ── Create session ─────────────────────────────────────────────────────────
-  let travel_md = build_travel_md(origin, destination, &from_date, &to_date, days, budget);
   let session = match create_session(&travel_md) {
     Ok(s) => s,
     Err(e) => {
@@ -279,7 +321,7 @@ async fn main() {
       println!();
       println!("  {BOLD}On-Chain Proof (ERC-7857){RESET}");
       println!("  ────────────────────────────────────");
-      println!("  Contract   {DIM}0x770f6107934224882ce4919934eE5B2BfF7783aE{RESET}");
+      println!("  Contract   {DIM}0xAF2699e9d306b57F5541aE3f04C43586589fD455{RESET}");
       println!("  Tx Hash    {GREEN}{tx}{RESET}");
       println!("  Explorer   {DIM}https://chainscan-galileo.0g.ai/tx/{tx}{RESET}");
     }

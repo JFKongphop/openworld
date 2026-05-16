@@ -230,6 +230,10 @@ pub struct JourneyArtifact {
   /// Path to the generated Markdown travel report on disk
   #[serde(default)]
   pub report_path: Option<String>,
+  /// EVM wallet address that owns this journey NFT (from trip.md `owner:` field).
+  /// Falls back to the operator wallet if not specified.
+  #[serde(default)]
+  pub owner_address: Option<String>,
 }
 
 // ─── Execution Context ────────────────────────────────────────────────────────

@@ -117,6 +117,16 @@ contract OpenWorldJourney is ERC721, Ownable {
     bytes32 newMerkleRoot
   );
 
+  /// @notice One-stop event: owner address + markdown report root hash together.
+  ///         Frontend queries this event filtered by owner to get all report hashes
+  ///         and download reports directly from 0G Storage — no extra contract calls needed.
+  event ReportPublished(
+    address indexed owner,
+    bytes32 indexed reportHash,
+    uint256 indexed tokenId,
+    string  sessionId
+  );
+
   /// @notice ERC-7857 required event (generic intelligence update)
   event Updated(uint256 indexed tokenId, IntelligentData[] oldDatas, IntelligentData[] newDatas);
 
@@ -161,12 +171,14 @@ contract OpenWorldJourney is ERC721, Ownable {
   /**
    * @notice Convenience: mint + record both collections in one transaction.
    *         Called by the Rust agent after uploading both payloads to 0G Storage.
+   * @param owner            Wallet address that will own the journey NFT (from trip.md).
    * @param sessionId        Rust orchestration session UUID.
    * @param tripDescription  Human-readable trip summary.
    * @param memoryHash       0G Storage root hash of the agent JSON context blob.
    * @param reportHash       0G Storage root hash of the Markdown travel report.
    */
   function mintAndRecord(
+    address owner,
     string calldata sessionId,
     string calldata tripDescription,
     bytes32 memoryHash,
@@ -176,9 +188,10 @@ contract OpenWorldJourney is ERC721, Ownable {
     onlyOwner
     returns (uint256 tokenId)
   {
+    require(owner != address(0), "Zero owner address");
     require(bytes(sessionId).length > 0, "Empty sessionId");
     tokenId = _nextTokenId++;
-    _safeMint(msg.sender, tokenId);
+    _safeMint(owner, tokenId);
     agentAddress[tokenId] = msg.sender;
 
     journeyMeta[tokenId] = JourneyMeta({
@@ -201,8 +214,7 @@ contract OpenWorldJourney is ERC721, Ownable {
 
     emit JourneyMinted(tokenId, msg.sender, msg.sender, sessionId);
     emit MemoryUpdated(tokenId, _memoryDatas[tokenId]);
-    emit ReportUpdated(tokenId, _reportDatas[tokenId]);
-  }
+    emit ReportUpdated(tokenId, _reportDatas[tokenId]);    emit ReportPublished(owner, reportHash, tokenId, sessionId);  }
 
   // ── Collection 1: JSON Context Memory ─────────────────────────────────────
 
