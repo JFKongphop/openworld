@@ -1,0 +1,38 @@
+[
+  {
+    "artifact_id": "ed74d650-0d16-4953-aa22-dd58ab92bf3c",
+    "created_at": "2026-05-16T17:32:09.484675+07:00",
+    "destination": "TYO",
+    "duration_days": 5,
+    "on_chain_tx": null,
+    "report_root_hash": "0xe4cae823d3096f626a2c42ab25651bf25fdc03f369cbe8d84e09fed2cc194951",
+    "session_id": "99ecc9b5-3f3d-4990-aa1f-272b4c26018a",
+    "storage_root_hash": "0xff77fcfd41f025def52a7b87beb42bff7e3ed305ffb19c77fc52c77ab02ac338",
+    "total_spent_usd": 832.0,
+    "trip_summary": "Bangkok → TYO (5d) — 832 USD spent on 6 bookings"
+  },
+  {
+    "artifact_id": "5636218d-f2cb-4efa-aa10-ee02274a5889",
+    "created_at": "2026-05-16T17:45:45.874124+07:00",
+    "destination": "TYO",
+    "duration_days": 5,
+    "on_chain_tx": null,
+    "report_root_hash": "0x96f01de6c0c26d18a0c326e4309e1eaa756698bb38cb46420e2532da77ff3213",
+    "session_id": "dd26591b-cc36-42bc-95e2-1b76e1bcffb6",
+    "storage_root_hash": "0x02f36c53b98c9cdc1b6d7cfe6bb89804b1812942f78d9c9ab122ebae78204287",
+    "total_spent_usd": 872.0,
+    "trip_summary": "Bangkok → TYO (5d) — 872 USD spent on 6 bookings"
+  },
+  {
+    "artifact_id": "c70fc701-a1d6-4892-8418-35acba49afb5",
+    "created_at": "2026-05-16T18:01:50.318589+07:00",
+    "destination": "Japan",
+    "duration_days": 5,
+    "on_chain_tx": null,
+    "report_root_hash": "0x8571585b127fd9fdb87fbb5223ab5025083b9260e986931f2c9b13bd68fb239e",
+    "session_id": "d9fb52e1-4c91-4157-8042-55f609bba7c9",
+    "storage_root_hash": "0x8a6a5a9c4e73db17b723b6e3e5a84e8e98a267a97de0eb95c1ba5dbe68c1a5c2",
+    "total_spent_usd": 904.0,
+    "trip_summary": "Bangkok → Japan (5d) — 904 USD spent on 6 bookings"
+  }
+]

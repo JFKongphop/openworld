@@ -16,7 +16,6 @@ const FG_BLUE:    &str = "\x1b[94m";
 const FG_MAGENTA: &str = "\x1b[95m";
 const FG_GRAY:    &str = "\x1b[90m";
 const BG_DARK:    &str = "\x1b[48;5;235m";
-const BG_HEADER:  &str = "\x1b[48;5;17m";
 const BG_CODE:    &str = "\x1b[48;5;236m";
 
 fn term_width() -> usize {

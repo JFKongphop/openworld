@@ -23,7 +23,6 @@ Endpoints:
   GET    /health                    → { "status": "ok" }
 */
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{

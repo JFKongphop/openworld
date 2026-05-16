@@ -1,0 +1,43 @@
+[package]
+name = "openworld"
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenWorld Team"]
+description = "Autonomous agentic travel planning and reservation system powered by 0G Compute + 0G Storage"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "api"
+path = "src/api.rs"
+
+[[bin]]
+name = "travel"
+path = "src/bin/travel.rs"
+
+[[bin]]
+name = "report"
+path = "src/bin/report.rs"
+
+[dependencies]
+tokio          = { version = "1",    features = ["full"] }
+reqwest        = { version = "0.11", features = ["json"] }
+serde          = { version = "1",    features = ["derive"] }
+serde_json     = "1"
+serde_yaml     = "0.9"
+dotenv         = "0.15"
+chrono         = { version = "0.4",  features = ["clock"] }
+anyhow         = "1"
+regex          = "1"
+axum           = { version = "0.7",  features = ["macros", "ws"] }
+tower-http     = { version = "0.5",  features = ["cors"] }
+async-trait    = "0.1"
+futures        = "0.3"
+uuid           = { version = "1",    features = ["v4", "serde"] }
+tokio-stream   = "0.1"
+ethers         = { version = "2.0",  features = ["abigen", "ws"] }
+hex            = "0.4"
+base64         = "0.21"
+md5            = "0.7"
