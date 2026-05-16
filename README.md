@@ -6,6 +6,14 @@ Write a `trip.md` policy file. A pipeline of AI agents handles everything — fl
 
 ---
 
+## Links
+
+- [Demo Video](https://youtu.be/A2_0xyCH6Ls)
+- [Frontend](https://openworld-alpha.vercel.app/)
+- [Deployed Contract](https://chainscan.0g.ai/address/0x770f6107934224882ce4919934eE5B2BfF7783aE) — `0x770f6107934224882ce4919934eE5B2BfF7783aE` on 0G Mainnet (chain ID `16661`)
+
+---
+
 ## How It Works
 
 ```
@@ -174,8 +182,6 @@ Each token represents one completed journey execution and stores two `Intelligen
 
 1. **JSON Context Memory** — session policy, AI itinerary, booking results, vault ledger, and execution logs (0G Storage root hash)
 2. **Report Root** — 0G Storage root hash of the generated Markdown travel report
-
-**Deployed contract:** [`0x770f6107934224882ce4919934eE5B2BfF7783aE`](https://chainscan.0g.ai/address/0x770f6107934224882ce4919934eE5B2BfF7783aE) on 0G Mainnet (chain ID `16661`)
 
 ### Deploy
 
