@@ -1,19 +1,24 @@
 /*!
-ArtifactAgent — ERC-7857 journey artifact creation and 0G Storage persistence.
+ArtifactAgent — signed execution artifact creation and local persistence.
 
 Responsibilities:
   1. Hashes all booking references to produce verifiable booking proofs
   2. Hashes the full orchestration log for execution provenance
-  3. Persists the artifact metadata to 0G Storage
-  4. Optionally mints the artifact on-chain via the ERC-7857 contract
+  3. Produces an HMAC-SHA256 execution signature (operator key proof)
+  4. Persists the artifact to MemoryStore (local JSON)
+  5. Generates a Markdown travel report with destination tips from Qwen
 
-The artifact transforms the session from "temporary chat output"
-into a persistent, verifiable record of autonomous execution.
+The artifact is a cryptographically signed record of autonomous execution —
+no blockchain required: the HMAC proves the operator key was present when
+the journey completed, while the content hash is reproducible.
 */
 
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Local;
+use hmac::{Hmac, Mac};
+use serde_json;
+use sha2::Sha256;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -22,16 +27,17 @@ use super::{
   ActivityLog, Agent, BookingHash, BookingResult, BookingStatus, ExecutionContext,
   Itinerary, JourneyArtifact,
 };
-use crate::erc7857;
-use crate::og_compute::OgComputeClient;
-use crate::og_storage::{OgStorageClient, StoredArtifact};
+use crate::memory_store::MemoryStore;
+use crate::qwen_client::QwenClient;
 use crate::report::generate_travel_report;
+
+type HmacSha256 = Hmac<Sha256>;
 
 // ─── ArtifactAgent ────────────────────────────────────────────────────────────
 
 pub struct ArtifactAgent {
-  storage: OgStorageClient,
-  compute: OgComputeClient,
+  storage: MemoryStore,
+  compute: QwenClient,
   itinerary: Arc<Mutex<Option<Itinerary>>>,
   bookings: Arc<Mutex<Vec<BookingResult>>>,
   pub artifact: Arc<Mutex<Option<JourneyArtifact>>>,
@@ -39,8 +45,8 @@ pub struct ArtifactAgent {
 
 impl ArtifactAgent {
   pub fn new(
-    storage: OgStorageClient,
-    compute: OgComputeClient,
+    storage: MemoryStore,
+    compute: QwenClient,
     itinerary: Arc<Mutex<Option<Itinerary>>>,
     bookings: Arc<Mutex<Vec<BookingResult>>>,
     artifact: Arc<Mutex<Option<JourneyArtifact>>>,
@@ -96,6 +102,15 @@ impl Agent for ArtifactAgent {
     );
     let execution_logs_hash = format!("{:x}", md5::compute(log_preimage.as_bytes()));
 
+    // HMAC-SHA256 execution signature using operator key
+    let operator_key = std::env::var("OPERATOR_SIGNING_KEY")
+      .unwrap_or_else(|_| "openworld-dev-key".to_string());
+    let execution_proof = hmac_sign(&operator_key, &log_preimage);
+    ctx.log(ActivityLog::info(
+      self.name(),
+      &format!("Execution proof: {}...{}", &execution_proof[..8], &execution_proof[execution_proof.len()-8..]),
+    ));
+
     let total_spent: f64 = bookings
       .iter()
       .filter(|b| b.status == BookingStatus::Confirmed)
@@ -119,44 +134,41 @@ impl Agent for ArtifactAgent {
 
     ctx.log(ActivityLog::info(self.name(), &format!("Trip: {}", trip_summary)));
 
-    // Persist to 0G Storage
-    ctx.log(ActivityLog::action(self.name(), "Persisting artifact to 0G Storage..."));
+    // Persist artifact record to MemoryStore
+    ctx.log(ActivityLog::action(self.name(), "Persisting artifact to local store..."));
 
-    let stored = StoredArtifact {
-      artifact_id: Uuid::new_v4().to_string(),
-      session_id: ctx.session_id.to_string(),
-      trip_summary: trip_summary.clone(),
-      total_spent,
-      booking_hashes: booking_hashes.iter().map(|h| h.hash.clone()).collect(),
-      execution_hash: execution_logs_hash.clone(),
-      on_chain_tx: None,
-      created_at: Local::now().to_rfc3339(),
-      root_hash: None,
-    };
+    let artifact_id = Uuid::new_v4().to_string();
+    let artifact_record = serde_json::json!({
+      "artifact_id": artifact_id,
+      "session_id": ctx.session_id.to_string(),
+      "trip_summary": trip_summary,
+      "total_spent": total_spent,
+      "booking_hashes": booking_hashes.iter().map(|h| &h.hash).collect::<Vec<_>>(),
+      "execution_hash": execution_logs_hash,
+      "execution_proof": execution_proof,
+      "created_at": Local::now().to_rfc3339(),
+    });
 
-    let root_hash = match self
-      .storage
-      .upload(&format!("artifact_{}", &stored.artifact_id[..8]), &stored)
-      .await
-    {
+    let store_key = format!("artifact_{}", &artifact_id[..8]);
+    let storage_root_hash = match self.storage.store(&store_key, &artifact_record) {
       Ok(h) => {
         ctx.log(ActivityLog::success(
           self.name(),
-          &format!("✓ Artifact stored on 0G Storage — root: {}", &h[..std::cmp::min(h.len(), 16)]),
+          &format!("✓ Artifact stored locally — hash: {}...", &h[..16.min(h.len())]),
         ));
         Some(h)
       }
       Err(e) => {
         ctx.log(ActivityLog::warn(
           self.name(),
-          &format!("0G Storage upload skipped ({})", e),
+          &format!("Local store skipped ({})", e),
         ));
         None
       }
     };
 
-    // ── Generate destination travel tips via 0G Compute ────────────────────
-    ctx.log(ActivityLog::action(self.name(), "Generating destination guide via 0G Compute..."));
+    // ── Generate destination travel tips via Qwen ─────────────────────────
+    ctx.log(ActivityLog::action(self.name(), "Generating destination guide via Qwen..."));
     let city_name = ctx.policy.resolved_city_name().to_string();
     let dep_date  = &ctx.policy.trip.departure_date;
     let ret_date  = &ctx.policy.trip.return_date;
@@ -211,12 +223,12 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       &ctx.policy,
       &itinerary_snap,
       &bookings,
-      &stored.artifact_id,
+      &artifact_id,
       &ctx.session_id.to_string(),
-      &stored.execution_hash,
-      root_hash.as_deref(),
-      None, // report_root_hash — filled after upload
-      None, // on_chain_tx — filled later if minted
+      &execution_logs_hash,
+      storage_root_hash.as_deref(),
+      None, // report_root_hash
+      None, // on_chain_tx — no longer used
       travel_tips.as_deref(),
     );
 
@@ -232,24 +244,22 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       )),
     }
 
-    // ── Upload Markdown report to 0G Storage ────────────────────────────────
+    // ── Store report in MemoryStore ──────────────────────────────────────────
     let report_root_hash = match &report_path {
-      Ok(path) => {
-        ctx.log(ActivityLog::action(self.name(), "Uploading report to 0G Storage..."));
-        let report_key = format!("report_{}", &stored.artifact_id[..8]);
-        match self.storage.upload_text(&report_key, &report_md).await {
+      Ok(_) => {
+        let report_key = format!("report_{}", &artifact_id[..8]);
+        match self.storage.store_text(&report_key, &report_md) {
           Ok(h) => {
             ctx.log(ActivityLog::success(
               self.name(),
-              &format!("✓ Report stored on 0G Storage — root: {}", &h[..std::cmp::min(h.len(), 16)]),
+              &format!("✓ Report stored locally — hash: {}...", &h[..16.min(h.len())]),
             ));
-            let _ = path; // already used above
             Some(h)
           }
           Err(e) => {
             ctx.log(ActivityLog::warn(
               self.name(),
-              &format!("Report 0G upload skipped ({})", e),
+              &format!("Report local store skipped ({})", e),
             ));
             None
           }
@@ -259,7 +269,7 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
     };
 
     let artifact = JourneyArtifact {
-      artifact_id: stored.artifact_id.clone(),
+      artifact_id: artifact_id.clone(),
       session_id: ctx.session_id.to_string(),
       trip_summary,
       destination,
@@ -267,10 +277,10 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       total_spent_usd: total_spent,
       bookings: booking_hashes,
       execution_logs_hash,
-      storage_root_hash: root_hash,
+      storage_root_hash,
       report_root_hash,
       on_chain_tx: None,
-      created_at: stored.created_at,
+      created_at: Local::now().to_rfc3339(),
       report_path: report_path.ok(),
       owner_address: ctx.policy.trip.owner.clone(),
     };
@@ -279,49 +289,6 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       self.name(),
       &format!("✓ Journey artifact created — ID: {}", &artifact.artifact_id[..8]),
     ));
-
-    // ── Mint on-chain via ERC-7857 (OpenWorldJourney contract) ───────────────
-    ctx.log(ActivityLog::action(self.name(), "Minting ERC-7857 journey artifact on 0G Testnet..."));
-    let on_chain_tx = match erc7857::mint_journey_artifact(&artifact).await {
-      Ok(tx) => {
-        ctx.log(ActivityLog::success(
-          self.name(),
-          &format!("✓ ERC-7857 minted on 0G Testnet — tx: {}", tx),
-        ));
-        Some(tx)
-      }
-      Err(e) => {
-        ctx.log(ActivityLog::warn(
-          self.name(),
-          &format!("ERC-7857 mint skipped ({})", e),
-        ));
-        None
-      }
-    };
-
-    let artifact = JourneyArtifact { on_chain_tx: on_chain_tx.clone(), ..artifact };
-
-    // Re-save the report now that we have the on-chain tx hash
-    if on_chain_tx.is_some() {
-      let itinerary_snap = self.itinerary.lock().await.clone();
-      let bookings_snap = self.bookings.lock().await.clone();
-      let updated_report = generate_travel_report(
-        &ctx.policy,
-        &itinerary_snap,
-        &bookings_snap,
-        &artifact.artifact_id,
-        &ctx.session_id.to_string(),
-        &artifact.execution_logs_hash,
-        artifact.storage_root_hash.as_deref(),
-        artifact.report_root_hash.as_deref(),
-        artifact.on_chain_tx.as_deref(),
-        travel_tips.as_deref(),
-      );
-      if let Some(path) = &artifact.report_path {
-        let _ = std::fs::write(path, &updated_report);
-        ctx.log(ActivityLog::info(self.name(), "Report updated with on-chain proof."));
-      }
-    }
 
     ctx.log(ActivityLog::success(self.name(), "Execution proof complete."));
 
@@ -336,7 +303,6 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
 fn save_report(destination: &str, session_id: &str, content: &str) -> Result<String> {
   let reports_dir = std::env::var("REPORTS_DIR")
     .unwrap_or_else(|_| {
-      // Default: reports/ next to the binary's working directory
       let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
       manifest.join("reports").to_string_lossy().to_string()
     });
@@ -349,6 +315,16 @@ fn save_report(destination: &str, session_id: &str, content: &str) -> Result<Str
   std::fs::write(&full_path, content)?;
 
   Ok(full_path.to_string_lossy().to_string())
+}
+
+/// Produce an HMAC-SHA256 hex digest of `message` using `key`.
+/// Used as a lightweight execution proof — verifiable by anyone with the operator key.
+fn hmac_sign(key: &str, message: &str) -> String {
+  let mut mac = HmacSha256::new_from_slice(key.as_bytes())
+    .expect("HMAC accepts any key length");
+  mac.update(message.as_bytes());
+  let result = mac.finalize();
+  result.into_bytes().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn hash_booking(b: &BookingResult) -> String {
