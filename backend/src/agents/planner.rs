@@ -17,18 +17,18 @@ use tokio::sync::Mutex;
 use super::{
   ActivityLog, Agent, DailyActivity, DayPlan, ExecutionContext, Itinerary, SegmentKind, TravelSegment,
 };
-use crate::og_compute::OgComputeClient;
+use crate::qwen_client::QwenClient;
 
 // ─── PlannerAgent ─────────────────────────────────────────────────────────────
 
 pub struct PlannerAgent {
-  compute: OgComputeClient,
+  compute: QwenClient,
   /// Shared slot where the produced itinerary is written for downstream agents
   pub itinerary: Arc<Mutex<Option<Itinerary>>>,
 }
 
 impl PlannerAgent {
-  pub fn new(compute: OgComputeClient, itinerary: Arc<Mutex<Option<Itinerary>>>) -> Self {
+  pub fn new(compute: QwenClient, itinerary: Arc<Mutex<Option<Itinerary>>>) -> Self {
     Self { compute, itinerary }
   }
 }
