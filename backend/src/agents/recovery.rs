@@ -18,19 +18,19 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::{ActivityLog, Agent, BookingResult, BookingStatus, ExecutionContext, Itinerary};
-use crate::og_compute::OgComputeClient;
+use crate::qwen_client::QwenClient;
 
 // ─── RecoveryAgent ────────────────────────────────────────────────────────────
 
 pub struct RecoveryAgent {
-  compute: OgComputeClient,
+  compute: QwenClient,
   itinerary: Arc<Mutex<Option<Itinerary>>>,
   bookings: Arc<Mutex<Vec<BookingResult>>>,
 }
 
 impl RecoveryAgent {
   pub fn new(
-    compute: OgComputeClient,
+    compute: QwenClient,
     itinerary: Arc<Mutex<Option<Itinerary>>>,
     bookings: Arc<Mutex<Vec<BookingResult>>>,
   ) -> Self {
