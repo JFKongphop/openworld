@@ -311,19 +311,7 @@ async fn main() {
     println!("  Bookings      {} confirmed", art.bookings.len());
     println!("  Artifact ID   {DIM}{}{RESET}", art.artifact_id);
     if let Some(root) = &art.storage_root_hash {
-      println!("  0G Artifact   {CYAN}{root}{RESET}");
-    }
-    if let Some(root) = &art.report_root_hash {
-      println!("  0G Report     {CYAN}{root}{RESET}");
-    }
-
-    if let Some(tx) = &art.on_chain_tx {
-      println!();
-      println!("  {BOLD}On-Chain Proof (ERC-7857){RESET}");
-      println!("  ────────────────────────────────────");
-      println!("  Contract   {DIM}0xAF2699e9d306b57F5541aE3f04C43586589fD455{RESET}");
-      println!("  Tx Hash    {GREEN}{tx}{RESET}");
-      println!("  Explorer   {DIM}https://chainscan-galileo.0g.ai/tx/{tx}{RESET}");
+      println!("  Exec Proof    {CYAN}{}{RESET}", &root[..root.len().min(32)]);
     }
 
     if let Some(path) = &art.report_path {
