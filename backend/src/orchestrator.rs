@@ -32,8 +32,8 @@ use crate::agents::{
   vault::VaultAgent,
   ActivityLog, Agent, BookingResult, ExecutionContext, Itinerary, JourneyArtifact, SearchResults,
 };
-use crate::og_compute::{build_og_compute, OgComputeClient};
-use crate::og_storage::build_og_storage;
+use crate::qwen_client::{build_qwen_client, QwenClient};
+use crate::memory_store::build_memory_store;
 use crate::travel_spec::{parse_travel_md, TravelPolicy};
 
 // ─── Session State ────────────────────────────────────────────────────────────
@@ -128,11 +128,11 @@ pub fn run_session(session: Arc<Session>) {
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
 async fn orchestrate(session: Arc<Session>) -> Result<()> {
-  let compute = build_og_compute().unwrap_or_else(|_| {
+  let compute = build_qwen_client().unwrap_or_else(|_| {
     // Log warning but continue — agents have fallbacks
-    OgComputeClient::new("http://localhost:11434/v1/chat/completions".to_string(), "llama3".to_string())
+    QwenClient::new("http://localhost:11434/v1/chat/completions".to_string(), "qwen-max".to_string())
   });
-  let storage = build_og_storage();
+  let storage = build_memory_store().expect("Failed to create MemoryStore");
 
   // Build ExecutionContext wired to this session's broadcast channel
   let ctx = ExecutionContext {
