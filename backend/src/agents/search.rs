@@ -20,21 +20,21 @@ use super::{
   ActivityLog, Agent, ExecutionContext, FlightOption, HotelOption, Itinerary,
   SearchResults, SegmentKind, TransportOption,
 };
-use crate::og_compute::OgComputeClient;
+use crate::qwen_client::QwenClient;
 
 // ─── SearchAgent ──────────────────────────────────────────────────────────────
 
 pub struct SearchAgent {
   itinerary: Arc<Mutex<Option<Itinerary>>>,
   pub results: Arc<Mutex<SearchResults>>,
-  compute: OgComputeClient,
+  compute: QwenClient,
 }
 
 impl SearchAgent {
   pub fn new(
     itinerary: Arc<Mutex<Option<Itinerary>>>,
     results: Arc<Mutex<SearchResults>>,
-    compute: OgComputeClient,
+    compute: QwenClient,
   ) -> Self {
     Self { itinerary, results, compute }
   }
