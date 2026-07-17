@@ -119,9 +119,13 @@ impl Agent for ReservationAgent {
         &format!("Booking {:?} segment: {}", seg.kind, seg.id),
       ));
 
-      // Select best provider from search results for this segment type
+      // ── Price reconciliation gate ─────────────────────────────────────────
+      // Confirm the SerpAPI price still matches what's in search results
+      // before proceeding to booking. Flag if price shifted > 10%.
       let (provider, booking_url, price) =
         select_best_provider(&seg, &search, ctx);
+
+      let confirmed_price = reconcile_price(price, &seg.estimated_price_usd, &provider, self.name(), ctx);
 
       ctx.log(ActivityLog::action(
         self.name(),
@@ -129,7 +133,7 @@ impl Agent for ReservationAgent {
       ));
 
       let booking = self
-        .execute_booking(&seg.id, &format!("{:?}", seg.kind), &provider, &booking_url, price, ctx)
+        .execute_booking(&seg.id, &format!("{:?}", seg.kind), &provider, &booking_url, confirmed_price, ctx)
         .await;
 
       match &booking.status {
@@ -238,14 +242,13 @@ impl ReservationAgent {
       }
 
       None => {
-        // Simulation mode — believable for hackathon demo
-        ctx.log(ActivityLog::action(
-          self.name(),
-          "  → Filling passenger information...",
-        ));
+        // Simulation mode — shows Reserved → AwaitingTicketing → Ticketed flow
+        ctx.log(ActivityLog::action(self.name(), "  → Seat hold request sent (Reserved)..."));
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-        ctx.log(ActivityLog::action(self.name(), "  → Submitting reservation..."));
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        ctx.log(ActivityLog::action(self.name(), "  → Payment authorised (AwaitingTicketing)..."));
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        ctx.log(ActivityLog::action(self.name(), "  → Ticket/voucher issued (Ticketed)..."));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         BookingResult {
           segment_id: segment_id.to_string(),
@@ -359,4 +362,36 @@ fn build_booking_actions(url: &str) -> Vec<BrowserAction> {
       value: None,
     },
   ]
+}
+
+/// Compare the live SerpAPI price against the planner's estimate.
+/// Logs a warning if the price shifted more than 10%.
+/// Returns the live price (preferred) or the estimate (if live is zero).
+fn reconcile_price(
+  live_price: f64,
+  estimated_price: &f64,
+  provider: &str,
+  agent_name: &str,
+  ctx: &ExecutionContext,
+) -> f64 {
+  if live_price <= 0.0 {
+    return *estimated_price;
+  }
+
+  let drift_pct = ((live_price - estimated_price) / estimated_price.max(1.0) * 100.0).abs();
+  if drift_pct > 10.0 {
+    ctx.log(ActivityLog::warn(
+      agent_name,
+      &format!(
+        "Price drift on {}: planned ${:.0} → live ${:.0} ({:.0}% change) — using live price",
+        provider, estimated_price, live_price, drift_pct
+      ),
+    ));
+  } else {
+    ctx.log(ActivityLog::info(
+      agent_name,
+      &format!("Price confirmed: {} ${:.0} (±{:.0}%)", provider, live_price, drift_pct),
+    ));
+  }
+  live_price
 }
