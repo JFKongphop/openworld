@@ -10,11 +10,14 @@ Powered by Qwen (Alibaba Cloud Model Studio) + Alibaba Cloud OSS/KMS/Log Service
 */
 
 pub mod agents;
-pub mod qwen_client;
+pub mod mapbox;
 pub mod memory_store;
 pub mod orchestrator;
+pub mod qwen_client;
 pub mod report;
+pub mod serpapi;
 pub mod travel_spec;
+pub mod weather;
 
 pub use qwen_client::{build_qwen_client, QwenClient};
 pub use memory_store::{build_memory_store, MemoryStore};
