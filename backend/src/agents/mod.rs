@@ -187,6 +187,13 @@ pub struct SearchResults {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum BookingStatus {
+  /// Seat/room held, payment not yet taken
+  Reserved,
+  /// Payment authorised, waiting for ticket/voucher issuance
+  AwaitingTicketing,
+  /// Ticket/voucher issued — fully confirmed
+  Ticketed,
+  /// Legacy alias kept for backward compat with existing code paths
   Confirmed,
   Pending,
   Failed,
