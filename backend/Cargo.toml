@@ -3,7 +3,7 @@ name = "openworld"
 version = "0.1.0"
 edition = "2021"
 authors = ["OpenWorld Team"]
-description = "Autonomous agentic travel planning and reservation system powered by 0G Compute + 0G Storage"
+description = "Autonomous agentic travel planning and reservation system powered by Qwen (Alibaba Cloud Model Studio)"
 license = "MIT"
 
 [lib]
@@ -37,7 +37,6 @@ async-trait    = "0.1"
 futures        = "0.3"
 uuid           = { version = "1",    features = ["v4", "serde"] }
 tokio-stream   = "0.1"
-ethers         = { version = "2.0",  features = ["abigen", "ws"] }
-hex            = "0.4"
-base64         = "0.21"
 md5            = "0.7"
+hmac           = "0.12"
+sha2           = "0.10"
