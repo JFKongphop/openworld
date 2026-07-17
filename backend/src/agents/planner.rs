@@ -17,7 +17,9 @@ use tokio::sync::Mutex;
 use super::{
   ActivityLog, Agent, DailyActivity, DayPlan, ExecutionContext, Itinerary, SegmentKind, TravelSegment,
 };
+use crate::mapbox::build_mapbox;
 use crate::qwen_client::QwenClient;
+use crate::weather::build_weather;
 
 // ─── PlannerAgent ─────────────────────────────────────────────────────────────
 
@@ -229,8 +231,92 @@ Rules:
       }
     }
 
+    // ── Mapbox + Weather validation pass ─────────────────────────────────────
+    ctx.log(ActivityLog::action(self.name(), "Validating day plans (routes + weather)..."));
+    self.validate_plan(&itinerary, ctx).await;
+
     *self.itinerary.lock().await = Some(itinerary);
     Ok(())
+  }
+}
+
+// ─── Mapbox + Weather validation ──────────────────────────────────────────────
+
+impl PlannerAgent {
+  /// Validate each day's activities for:
+  ///   1. Physical feasibility (Mapbox routing — total transit ≤ 3 hrs)
+  ///   2. Weather advisories (Open-Meteo forecast warnings)
+  pub async fn validate_plan(&self, itinerary: &Itinerary, ctx: &ExecutionContext) {
+    let city = ctx.policy.resolved_city_name().to_string();
+    let dep  = &ctx.policy.trip.departure_date;
+    let ret  = &ctx.policy.trip.return_date;
+
+    // ── Weather check ────────────────────────────────────────────────────────
+    let weather_client = build_weather();
+    match weather_client.forecast_for_city(&city, dep, ret).await {
+      Ok(forecast) => {
+        ctx.log(ActivityLog::info(self.name(), "🌤️  Weather forecast loaded:"));
+        for day in &forecast {
+          let msg = format!(
+            "  {} {} {:.0}°C–{:.0}°C{}",
+            day.date,
+            day.condition.as_emoji(),
+            day.temp_min_c,
+            day.temp_max_c,
+            day.warning.as_deref().map(|w| format!(" ⚠ {}", w)).unwrap_or_default(),
+          );
+          if day.warning.is_some() {
+            ctx.log(ActivityLog::warn(self.name(), &msg));
+          } else {
+            ctx.log(ActivityLog::info(self.name(), &msg));
+          }
+        }
+      }
+      Err(e) => {
+        ctx.log(ActivityLog::warn(self.name(), &format!("Weather forecast unavailable: {}", e)));
+      }
+    }
+
+    // ── Mapbox feasibility check ─────────────────────────────────────────────
+    let mapbox = match build_mapbox() {
+      Ok(m) => m,
+      Err(_) => {
+        ctx.log(ActivityLog::warn(self.name(), "Mapbox unavailable — skipping route feasibility check"));
+        return;
+      }
+    };
+
+    for day in &itinerary.daily_plan {
+      let locations: Vec<String> = day.activities.iter()
+        .map(|a| format!("{}, {}", a.location, city))
+        .collect();
+
+      if locations.len() < 2 { continue; }
+
+      let (feasible, total_mins, warning) = mapbox.validate_day_plan(&locations).await;
+
+      if let Some(warn) = warning {
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          &format!("Day {} ({}): {}", day.day, day.title, warn),
+        ));
+      } else if total_mins > 0 {
+        ctx.log(ActivityLog::info(
+          self.name(),
+          &format!("Day {} ({}): {}min transit — ✓ feasible", day.day, day.title, total_mins),
+        ));
+      }
+
+      if !feasible {
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          &format!(
+            "Day {} may be over-scheduled — consider removing one activity or regrouping by area",
+            day.day
+          ),
+        ));
+      }
+    }
   }
 }
 
