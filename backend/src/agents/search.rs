@@ -1,14 +1,11 @@
 /*!
-SearchAgent — travel intelligence powered by 0G Compute AI.
+SearchAgent — real flight + hotel prices via SerpAPI, transport via Qwen.
 
-Uses the 0G Compute network (LLM) to research and price all travel options:
-  - Flights (airlines, fares, schedules)
-  - Hotels (names, ratings, nightly rates)
-  - Train / bus routes and fares
+Flight and hotel search uses SerpAPI (Google Flights / Google Hotels engines)
+for live real-world prices. Ground transport (trains, buses) stays as Qwen
+because Google doesn't index local rail fares reliably.
 
-No external scraping. All reasoning runs on 0G Compute.
-Each prompt instructs the model to think step-by-step before producing
-structured JSON — chain-of-thought for more realistic prices.
+Fallback: if SerpAPI is unavailable, falls back to Qwen chain-of-thought.
 */
 
 use anyhow::Result;
@@ -21,6 +18,7 @@ use super::{
   SearchResults, SegmentKind, TransportOption,
 };
 use crate::qwen_client::QwenClient;
+use crate::serpapi::{build_serpapi, SerpApiClient};
 
 // ─── SearchAgent ──────────────────────────────────────────────────────────────
 
@@ -28,6 +26,7 @@ pub struct SearchAgent {
   itinerary: Arc<Mutex<Option<Itinerary>>>,
   pub results: Arc<Mutex<SearchResults>>,
   compute: QwenClient,
+  serpapi: Option<SerpApiClient>,
 }
 
 impl SearchAgent {
@@ -36,7 +35,8 @@ impl SearchAgent {
     results: Arc<Mutex<SearchResults>>,
     compute: QwenClient,
   ) -> Self {
-    Self { itinerary, results, compute }
+    let serpapi = build_serpapi().ok();
+    Self { itinerary, results, compute, serpapi }
   }
 }
 
@@ -89,12 +89,18 @@ impl Agent for SearchAgent {
     ctx.log(ActivityLog::action(
       self.name(),
       &format!(
-        "Searching {} flight(s), {} hotel(s), {} route(s) in parallel via 0G Compute...",
+        "Searching {} flight(s), {} hotel(s), {} route(s) — flights/hotels via SerpAPI, transport via Qwen...",
         flight_tasks.len(),
         hotel_tasks.len(),
         transport_tasks.len(),
       ),
     ));
+
+    if self.serpapi.is_some() {
+      ctx.log(ActivityLog::info(self.name(), "✓ SerpAPI connected — using real Google Flights + Hotels prices"));
+    } else {
+      ctx.log(ActivityLog::warn(self.name(), "SerpAPI unavailable — falling back to Qwen estimates for flights/hotels"));
+    }
 
     // ── Parallel search — all three categories run concurrently ─────────────
     let (flights, hotels, transport) = tokio::join!(
@@ -270,7 +276,7 @@ Output ONLY valid JSON — no explanation, no markdown:
   }
 }
 
-// ─── 0G Compute search methods ────────────────────────────────────────────────
+// ─── SerpAPI + Qwen search methods ───────────────────────────────────────────
 
 impl SearchAgent {
   async fn search_flights(
@@ -280,41 +286,59 @@ impl SearchAgent {
     date: &str,
     ctx:  &ExecutionContext,
   ) -> Vec<FlightOption> {
+    // ── Try SerpAPI first (real Google Flights prices) ──────────────────────
+    if let Some(ref api) = self.serpapi {
+      match api.search_flights(from, to, date).await {
+        Ok(results) if !results.is_empty() => {
+          ctx.log(ActivityLog::success(
+            self.name(),
+            &format!("SerpAPI: {} real flight prices for {} → {}", results.len(), from, to),
+          ));
+          return results;
+        }
+        Ok(_) => {
+          ctx.log(ActivityLog::warn(self.name(), &format!(
+            "SerpAPI returned no flights for {} → {} — falling back to Qwen", from, to
+          )));
+        }
+        Err(e) => {
+          ctx.log(ActivityLog::warn(self.name(), &format!(
+            "SerpAPI flights error ({}), falling back to Qwen", e
+          )));
+        }
+      }
+    }
+
+    // ── Qwen fallback ───────────────────────────────────────────────────────
     let budget     = ctx.policy.trip.budget_max as u32;
     let max_flight = (ctx.policy.trip.budget_max * 0.40) as u32;
     let stop_pref  = if ctx.policy.flight.max_stops == 0 { "non-stop only" } else { "up to 1 stop" };
     let airlines   = ctx.policy.flight.preferred_airlines.join(", ");
     let airlines   = if airlines.is_empty() { "any airline".to_string() } else { airlines };
 
-    // Turn 1 — free reasoning about the market
     let think = format!(
       r#"A traveler needs economy class flights from {from} to {to} departing around {date}.
 Total trip budget: ${budget} USD | Max per flight: ${max_flight} USD | Stops: {stop_pref} | Airlines: {airlines}
 
 Reason step by step:
 1. Which full-service and low-cost airlines operate the {from} → {to} route?
-2. What are typical economy fares in USD for this route in this season? Consider peak vs off-peak.
-3. How do prices vary across budget carriers vs full-service for this specific route?
+2. What are typical economy fares in USD for this route in this season?
+3. How do prices vary across budget carriers vs full-service?
 Write your analysis now."#
     );
-
-    // Turn 2 — convert reasoning into structured JSON
     let answer = format!(
       r#"Based on your analysis above, output ONLY a valid JSON array of exactly 5 flight options. No markdown, no explanation — just the JSON array.
 Schema: [{{"airline":"ANA","price_usd":420,"stops":0,"duration":"6h30m","departure":"09:00"}}]
-All prices must be positive USD values. Budget carriers cheaper than full-service."#
+All prices must be positive USD values."#
     );
 
     let raw = match self.compute.think_then_answer(
       "You are a senior flight pricing expert with deep knowledge of Asian airline routes.",
-      &think,
-      &answer,
-      Some(1024),
+      &think, &answer, Some(1024),
     ).await {
       Ok(r) => r,
       Err(_) => return demo_flights(from, to),
     };
-
     parse_flights(&raw, from, to).unwrap_or_else(|| demo_flights(from, to))
   }
 
@@ -323,42 +347,60 @@ All prices must be positive USD values. Budget carriers cheaper than full-servic
     city: &str,
     ctx:  &ExecutionContext,
   ) -> Vec<HotelOption> {
-    let max_night  = ctx.policy.hotel.max_price_per_night as u32;
+    let max_night  = ctx.policy.hotel.max_price_per_night;
     let min_rating = ctx.policy.hotel.min_rating;
-    let location   = if ctx.policy.hotel.near_station {
-      "near a train or metro station"
-    } else {
-      "city centre"
-    };
+    let dep_date   = &ctx.policy.trip.departure_date;
+    let ret_date   = &ctx.policy.trip.return_date;
 
-    // Turn 1 — free reasoning about hotel market in this city
+    // ── Try SerpAPI first (real Google Hotels prices) ───────────────────────
+    if let Some(ref api) = self.serpapi {
+      match api.search_hotels(city, dep_date, ret_date, min_rating, max_night).await {
+        Ok(results) if !results.is_empty() => {
+          ctx.log(ActivityLog::success(
+            self.name(),
+            &format!("SerpAPI: {} real hotel prices in {}", results.len(), city),
+          ));
+          return results;
+        }
+        Ok(_) => {
+          ctx.log(ActivityLog::warn(self.name(), &format!(
+            "SerpAPI returned no hotels in {} — falling back to Qwen", city
+          )));
+        }
+        Err(e) => {
+          ctx.log(ActivityLog::warn(self.name(), &format!(
+            "SerpAPI hotels error ({}), falling back to Qwen", e
+          )));
+        }
+      }
+    }
+
+    // ── Qwen fallback ───────────────────────────────────────────────────────
+    let max_night_u = max_night as u32;
+    let location = if ctx.policy.hotel.near_station { "near a train or metro station" } else { "city centre" };
+
     let think = format!(
-      r#"A traveler needs a hotel in {city}. Max ${max_night} USD/night, min rating {min_rating}/5, location: {location}.
+      r#"A traveler needs a hotel in {city}. Max ${max_night_u} USD/night, min rating {min_rating}/5, location: {location}.
 
 Reason step by step:
 1. Which neighbourhoods in {city} are best for a mid-range traveler near transport?
-2. Which recognizable hotel brands (Dormy Inn, APA, Sotetsu Fresa, Richmond, Comfort Hotel, Vessel, Flexstay) have properties in {city}?
-3. What do rooms in these hotels realistically cost per night in USD? Consider that ${max_night} is the ceiling.
+2. Which recognizable hotel brands have properties in {city}?
+3. What do rooms in these hotels realistically cost per night in USD?
 Write your analysis now."#
     );
-
-    // Turn 2 — extract structured data from the reasoning
     let answer = format!(
       r#"Based on your analysis above, output ONLY a valid JSON array of exactly 5 hotel options. No markdown, no explanation — just the JSON array.
 Schema: [{{"name":"Dormy Inn Premium Shinjuku","price_per_night":88,"rating":4.3,"location":"Shinjuku, near JR station"}}]
-All options must be under ${max_night}/night, use real hotel names, positive prices only."#
+All options must be under ${max_night_u}/night, use real hotel names, positive prices only."#
     );
 
     let raw = match self.compute.think_then_answer(
       "You are a senior hotel pricing expert specialising in Japanese accommodation markets.",
-      &think,
-      &answer,
-      Some(1024),
+      &think, &answer, Some(1024),
     ).await {
       Ok(r) => r,
       Err(_) => return demo_hotels(city),
     };
-
     parse_hotels(&raw, city).unwrap_or_else(|| demo_hotels(city))
   }
 
