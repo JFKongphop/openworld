@@ -171,6 +171,27 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
     }
   });
 
+  // Wire log fan-out → Alibaba Cloud Log Service (fire-and-forget)
+  if let Some(sls) = crate::log_service::build_log_service() {
+    let session_id_str = session.session_id.to_string();
+    let mut sls_rx = session.subscribe();
+    tokio::spawn(async move {
+      while let Ok(entry) = sls_rx.recv().await {
+        let level = match entry.log_type {
+          crate::agents::LogType::Success => "success",
+          crate::agents::LogType::Warning => "warn",
+          crate::agents::LogType::Error => "error",
+          crate::agents::LogType::Action => "action",
+          crate::agents::LogType::Info => "info",
+        };
+        // Best-effort — SLS errors are silently dropped to avoid blocking
+        let _ = sls
+          .put_log(&session_id_str, &entry.agent, level, &entry.message)
+          .await;
+      }
+    });
+  }
+
   emit(
     &ctx,
     "Orchestrator",
