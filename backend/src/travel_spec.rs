@@ -162,9 +162,7 @@ impl TravelPolicy {
       errors.push("trip.budget_max must be greater than 0".to_string());
     }
     if self.vault.max_single_transaction > self.trip.budget_max {
-      errors.push(
-        "vault.max_single_transaction cannot exceed trip.budget_max".to_string(),
-      );
+      errors.push("vault.max_single_transaction cannot exceed trip.budget_max".to_string());
     }
     errors
   }
@@ -175,7 +173,9 @@ impl TravelPolicy {
     let d = self.trip.destination.trim();
     d.len() >= 2
       && d.len() <= 4
-      && d.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+      && d
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
   }
 
   /// Resolve a known IATA city code to its full city name for display/prompt purposes.
@@ -262,9 +262,7 @@ where
   use serde::de::Error;
   let value = serde_json::Value::deserialize(deserializer)?;
   match value {
-    serde_json::Value::Number(n) => n
-      .as_f64()
-      .ok_or_else(|| D::Error::custom("invalid number")),
+    serde_json::Value::Number(n) => n.as_f64().ok_or_else(|| D::Error::custom("invalid number")),
     serde_json::Value::String(s) => {
       let cleaned = s.split_whitespace().next().unwrap_or("0");
       cleaned
