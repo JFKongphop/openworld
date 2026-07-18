@@ -40,25 +40,23 @@ pub struct MapboxClient {
 
 impl MapboxClient {
   pub fn new(access_token: String) -> Self {
-    Self { access_token, http: Client::new() }
+    Self {
+      access_token,
+      http: Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default(),
+    }
   }
 
   /// Get driving duration in minutes between two coordinate pairs.
   /// `from` and `to` are (longitude, latitude) tuples.
-  pub async fn driving_minutes(
-    &self,
-    from: (f64, f64),
-    to: (f64, f64),
-  ) -> Result<u32> {
+  pub async fn driving_minutes(&self, from: (f64, f64), to: (f64, f64)) -> Result<u32> {
     self.route_minutes("driving", from, to).await
   }
 
   /// Get walking duration in minutes between two coordinate pairs.
-  pub async fn walking_minutes(
-    &self,
-    from: (f64, f64),
-    to: (f64, f64),
-  ) -> Result<u32> {
+  pub async fn walking_minutes(&self, from: (f64, f64), to: (f64, f64)) -> Result<u32> {
     self.route_minutes("walking", from, to).await
   }
 
@@ -70,14 +68,21 @@ impl MapboxClient {
     );
 
     #[derive(Deserialize)]
-    struct GeoResponse { features: Vec<GeoFeature> }
+    struct GeoResponse {
+      features: Vec<GeoFeature>,
+    }
     #[derive(Deserialize)]
-    struct GeoFeature { center: Vec<f64> }
+    struct GeoFeature {
+      center: Vec<f64>,
+    }
 
     let resp: GeoResponse = self
       .http
       .get(&url)
-      .query(&[("access_token", &self.access_token), ("limit", &"1".to_string())])
+      .query(&[
+        ("access_token", &self.access_token),
+        ("limit", &"1".to_string()),
+      ])
       .send()
       .await
       .context("Mapbox geocoding request failed")?
@@ -85,7 +90,8 @@ impl MapboxClient {
       .await
       .context("Failed to parse Mapbox geocoding response")?;
 
-    let center = resp.features
+    let center = resp
+      .features
       .into_iter()
       .next()
       .context("Mapbox geocoding returned no results")?
@@ -96,10 +102,7 @@ impl MapboxClient {
 
   /// Validate that a list of locations can be visited in order within a day.
   /// Returns (is_feasible, total_transit_minutes, warning_message).
-  pub async fn validate_day_plan(
-    &self,
-    locations: &[String],
-  ) -> (bool, u32, Option<String>) {
+  pub async fn validate_day_plan(&self, locations: &[String]) -> (bool, u32, Option<String>) {
     if locations.len() < 2 {
       return (true, 0, None);
     }
@@ -109,20 +112,15 @@ impl MapboxClient {
 
     for window in locations.windows(2) {
       let from_name = &window[0];
-      let to_name   = &window[1];
+      let to_name = &window[1];
 
-      let coords = tokio::join!(
-        self.geocode(from_name),
-        self.geocode(to_name),
-      );
+      let coords = tokio::join!(self.geocode(from_name), self.geocode(to_name),);
 
       match (coords.0, coords.1) {
-        (Ok(from), Ok(to)) => {
-          match self.driving_minutes(from, to).await {
-            Ok(mins) => total_minutes += mins,
-            Err(_) => failed_geocodes += 1,
-          }
-        }
+        (Ok(from), Ok(to)) => match self.driving_minutes(from, to).await {
+          Ok(mins) => total_minutes += mins,
+          Err(_) => failed_geocodes += 1,
+        },
         _ => failed_geocodes += 1,
       }
     }
@@ -135,7 +133,10 @@ impl MapboxClient {
         total_minutes
       ))
     } else if total_minutes > 90 {
-      Some(format!("Day plan has ~{}min transit — tight but doable", total_minutes))
+      Some(format!(
+        "Day plan has ~{}min transit — tight but doable",
+        total_minutes
+      ))
     } else {
       None
     };
@@ -148,22 +149,17 @@ impl MapboxClient {
     (feasible, total_minutes, warning)
   }
 
-  async fn route_minutes(
-    &self,
-    profile: &str,
-    from: (f64, f64),
-    to: (f64, f64),
-  ) -> Result<u32> {
+  async fn route_minutes(&self, profile: &str, from: (f64, f64), to: (f64, f64)) -> Result<u32> {
     let coords = format!("{},{};{},{}", from.0, from.1, to.0, to.1);
-    let url    = format!("{}/{}/{}", MAPBOX_DIRECTIONS_BASE, profile, coords);
+    let url = format!("{}/{}/{}", MAPBOX_DIRECTIONS_BASE, profile, coords);
 
     let resp = self
       .http
       .get(&url)
       .query(&[
         ("access_token", self.access_token.as_str()),
-        ("overview",     "false"),
-        ("geometries",   "geojson"),
+        ("overview", "false"),
+        ("geometries", "geojson"),
       ])
       .send()
       .await
@@ -184,7 +180,10 @@ impl MapboxClient {
       anyhow::bail!("Mapbox directions code: {:?}", data.code);
     }
 
-    let route = data.routes.into_iter().next()
+    let route = data
+      .routes
+      .into_iter()
+      .next()
       .context("Mapbox directions returned no routes")?;
 
     Ok((route.duration / 60.0).ceil() as u32)
@@ -194,7 +193,7 @@ impl MapboxClient {
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
 pub fn build_mapbox() -> anyhow::Result<MapboxClient> {
-  let token = std::env::var("MAPBOX_ACCESS_TOKEN")
-    .context("MAPBOX_ACCESS_TOKEN not set in .env")?;
+  let token =
+    std::env::var("MAPBOX_ACCESS_TOKEN").context("MAPBOX_ACCESS_TOKEN not set in .env")?;
   Ok(MapboxClient::new(token))
 }
