@@ -5,11 +5,6 @@
       "command": "${workspaceFolder}/backend/target/debug/mcp",
       "args": [],
       "env": {
-        "QWEN_API_KEY": "${env:QWEN_API_KEY}",
-        "QWEN_ENDPOINT": "${env:QWEN_ENDPOINT}",
-        "QWEN_MODEL": "${env:QWEN_MODEL}",
-        "SERPAPI_KEY": "${env:SERPAPI_KEY}",
-        "MAPBOX_ACCESS_TOKEN": "${env:MAPBOX_ACCESS_TOKEN}",
         "MEMORY_DIR": "${workspaceFolder}/backend/memory",
         "REPORTS_DIR": "${workspaceFolder}/backend/reports"
       }
