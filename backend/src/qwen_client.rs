@@ -30,6 +30,9 @@ struct ChatCompletionRequest {
   messages: Vec<ChatMessage>,
   #[serde(skip_serializing_if = "Option::is_none")]
   max_tokens: Option<u32>,
+  /// Disable chain-of-thought for qwen3.x models (keeps latency low)
+  #[serde(skip_serializing_if = "Option::is_none")]
+  enable_thinking: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -60,7 +63,10 @@ impl QwenClient {
       endpoint,
       model,
       api_key: None,
-      http: Client::new(),
+      http: Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .unwrap_or_default(),
     }
   }
 
@@ -70,20 +76,24 @@ impl QwenClient {
       endpoint,
       model,
       api_key: Some(api_key),
-      http: Client::new(),
+      http: Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .unwrap_or_default(),
     }
   }
 
   /// Run inference — autonomous travel agent system prompt
   pub async fn infer(&self, prompt: &str) -> Result<String> {
-    self.infer_with_system(
-      "You are an autonomous travel planning agent. You plan itineraries, \
+    self
+      .infer_with_system(
+        "You are an autonomous travel planning agent. You plan itineraries, \
        optimise routes under budget constraints, and make intelligent booking \
        decisions. Output structured JSON when asked. Be concise and deterministic.",
-      prompt,
-      Some(4096),
-    )
-    .await
+        prompt,
+        Some(4096),
+      )
+      .await
   }
 
   /// Two-turn chain-of-thought (ReAct-style):
@@ -107,24 +117,39 @@ impl QwenClient {
 
     // Turn 2: multi-turn — feed reasoning back, then ask for structured output
     let messages = vec![
-      ChatMessage { role: "system".into(),    content: system.into() },
-      ChatMessage { role: "user".into(),      content: think_prompt.into() },
-      ChatMessage { role: "assistant".into(), content: thinking },
-      ChatMessage { role: "user".into(),      content: answer_prompt.into() },
+      ChatMessage {
+        role: "system".into(),
+        content: system.into(),
+      },
+      ChatMessage {
+        role: "user".into(),
+        content: think_prompt.into(),
+      },
+      ChatMessage {
+        role: "assistant".into(),
+        content: thinking,
+      },
+      ChatMessage {
+        role: "user".into(),
+        content: answer_prompt.into(),
+      },
     ];
     self.chat(messages, max_tokens).await
   }
 
   /// Send a full conversation history to the model and return the next reply.
-  async fn chat(
-    &self,
-    messages: Vec<ChatMessage>,
-    max_tokens: Option<u32>,
-  ) -> Result<String> {
+  async fn chat(&self, messages: Vec<ChatMessage>, max_tokens: Option<u32>) -> Result<String> {
+    // Disable chain-of-thought for qwen3.x models to keep latency manageable
+    let enable_thinking = if self.model.starts_with("qwen3") {
+      Some(false)
+    } else {
+      None
+    };
     let req = ChatCompletionRequest {
       model: self.model.clone(),
       messages,
       max_tokens,
+      enable_thinking,
     };
 
     let mut request = self.http.post(&self.endpoint).json(&req);
@@ -143,10 +168,8 @@ impl QwenClient {
       anyhow::bail!("Qwen returned {}: {}", status, body);
     }
 
-    let parsed: ChatCompletionResponse = resp
-      .json()
-      .await
-      .context("Failed to parse Qwen response")?;
+    let parsed: ChatCompletionResponse =
+      resp.json().await.context("Failed to parse Qwen response")?;
 
     parsed
       .choices
@@ -163,14 +186,21 @@ impl QwenClient {
     user: &str,
     max_tokens: Option<u32>,
   ) -> Result<String> {
-    self.chat(
-      vec![
-        ChatMessage { role: "system".into(), content: system.into() },
-        ChatMessage { role: "user".into(),   content: user.into() },
-      ],
-      max_tokens,
-    )
-    .await
+    self
+      .chat(
+        vec![
+          ChatMessage {
+            role: "system".into(),
+            content: system.into(),
+          },
+          ChatMessage {
+            role: "user".into(),
+            content: user.into(),
+          },
+        ],
+        max_tokens,
+      )
+      .await
   }
 }
 
@@ -181,13 +211,11 @@ impl QwenClient {
 ///   QWEN_MODEL     — optional, defaults to qwen-max
 ///   QWEN_API_KEY   — optional (required for DashScope)
 pub fn build_qwen_client() -> Result<QwenClient> {
-  let endpoint =
-    std::env::var("QWEN_ENDPOINT").context("QWEN_ENDPOINT not set in .env")?;
-  let model = std::env::var("QWEN_MODEL")
-    .unwrap_or_else(|_| "qwen-max".to_string());
+  let endpoint = std::env::var("QWEN_ENDPOINT").context("QWEN_ENDPOINT not set in .env")?;
+  let model = std::env::var("QWEN_MODEL").unwrap_or_else(|_| "qwen-max".to_string());
 
   Ok(match std::env::var("QWEN_API_KEY") {
     Ok(key) => QwenClient::with_api_key(endpoint, model, key),
-    Err(_)  => QwenClient::new(endpoint, model),
+    Err(_) => QwenClient::new(endpoint, model),
   })
 }
