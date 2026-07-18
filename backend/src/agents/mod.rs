@@ -153,6 +153,9 @@ pub struct FlightOption {
   pub duration: String,
   pub price_usd: f64,
   pub booking_url: Option<String>,
+  /// Low-inventory signal from SerpAPI extensions ("X seats left at this price")
+  #[serde(default)]
+  pub seats_remaining: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
