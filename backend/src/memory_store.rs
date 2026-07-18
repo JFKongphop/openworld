@@ -1,7 +1,7 @@
 /*!
 MemoryStore — lightweight JSON file storage for OpenWorld session data.
 
-Replaces the 0G Storage subprocess wrapper with a simple local-disk store.
+Simple local-disk store for artifacts and reports.
 Each artifact is written as a JSON file under `MEMORY_DIR` (default: ./memory).
 A content hash (MD5) is returned as the record identifier, allowing
 deterministic retrieval even across process restarts.
@@ -40,15 +40,21 @@ impl MemoryStore {
   /// Serialize `value` to JSON, write to `<base_dir>/<key>.json`, and return
   /// the MD5 hex digest of the JSON bytes as a content hash.
   pub fn store<T: Serialize>(&self, key: &str, value: &T) -> Result<String> {
-    let json = serde_json::to_string_pretty(value)
-      .context("Failed to serialise value for MemoryStore")?;
+    let json =
+      serde_json::to_string_pretty(value).context("Failed to serialise value for MemoryStore")?;
     self.store_text(key, &json)
   }
 
-  /// Write raw `text` to `<base_dir>/<key>.txt` and return its MD5 content hash.
+  /// Write raw `text` to `<base_dir>/<key>.md` (Markdown) or `<key>.json` and return its MD5 content hash.
   pub fn store_text(&self, key: &str, text: &str) -> Result<String> {
     let safe_key = key.replace(['/', ':', ' ', '\\'], "_");
-    let path = self.base_dir.join(format!("{safe_key}.json"));
+    // Use .md extension for report keys, .json for everything else
+    let ext = if safe_key.starts_with("report_") {
+      "md"
+    } else {
+      "json"
+    };
+    let path = self.base_dir.join(format!("{safe_key}.{ext}"));
     fs::write(&path, text.as_bytes())
       .with_context(|| format!("Failed to write MemoryStore entry at {:?}", path))?;
     let hash = format!("{:x}", md5::compute(text.as_bytes()));
@@ -64,7 +70,10 @@ impl MemoryStore {
     {
       let entry = entry?;
       let path = entry.path();
-      if path.extension().and_then(|e| e.to_str()) != Some("json") {
+      if !matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("json") | Some("md")
+      ) {
         continue;
       }
       let bytes = fs::read(&path)?;
