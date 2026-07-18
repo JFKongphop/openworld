@@ -3,13 +3,13 @@ Orchestrator — the brain of the OpenWorld travel system.
 
 Execution flow:
   1. Parse travel.md → TravelPolicy
-  2. PlannerAgent    → Itinerary (0G Compute)
+  2. PlannerAgent    → Itinerary (Qwen AI)
   3. SearchAgent     → SearchResults (Firecrawl)
   4. VaultAgent      → pre-booking budget check
   5. ReservationAgent → BookingResults (OpenClaw)
-  6. RecoveryAgent   → repair failed bookings (0G Compute)
+  6. RecoveryAgent   → repair failed bookings (Qwen AI)
   7. VaultAgent      → post-booking spend verification
-  8. ArtifactAgent   → ERC-7857 artifact + 0G Storage
+  8. ArtifactAgent   → ERC-7857 artifact + local storage
 
 All agent activity is broadcast on the ExecutionContext log channel,
 which the API layer forwards to WebSocket subscribers in real time.
@@ -20,20 +20,17 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{broadcast, oneshot, Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::agents::{
-  artifact::ArtifactAgent,
-  planner::PlannerAgent,
-  recovery::RecoveryAgent,
-  reservation::ReservationAgent,
-  search::SearchAgent,
-  vault::VaultAgent,
-  ActivityLog, Agent, BookingResult, ExecutionContext, Itinerary, JourneyArtifact, SearchResults,
+  artifact::ArtifactAgent, planner::PlannerAgent, recovery::RecoveryAgent,
+  reservation::ReservationAgent, search::SearchAgent, vault::VaultAgent, ActivityLog, Agent,
+  BookingResult, ExecutionContext, Itinerary, JourneyArtifact, SearchResults,
 };
-use crate::qwen_client::{build_qwen_client, QwenClient};
 use crate::memory_store::build_memory_store;
+use crate::qwen_client::{build_qwen_client, QwenClient};
 use crate::travel_spec::{parse_travel_md, TravelPolicy};
 
 // ─── Session State ────────────────────────────────────────────────────────────
@@ -138,7 +135,9 @@ pub fn run_session(session: Arc<Session>) {
   tokio::spawn(async move {
     if let Err(e) = orchestrate(session.clone()).await {
       let err_msg = format!("Orchestration failed: {}", e);
-      let _ = session.log_tx.send(ActivityLog::error("Orchestrator", &err_msg));
+      let _ = session
+        .log_tx
+        .send(ActivityLog::error("Orchestrator", &err_msg));
       *session.state.write().await = SessionState::Failed;
     }
   });
@@ -149,7 +148,10 @@ pub fn run_session(session: Arc<Session>) {
 async fn orchestrate(session: Arc<Session>) -> Result<()> {
   let compute = build_qwen_client().unwrap_or_else(|_| {
     // Log warning but continue — agents have fallbacks
-    QwenClient::new("http://localhost:11434/v1/chat/completions".to_string(), "qwen-max".to_string())
+    QwenClient::new(
+      "http://localhost:11434/v1/chat/completions".to_string(),
+      "qwen-max".to_string(),
+    )
   });
   let storage = build_memory_store().expect("Failed to create MemoryStore");
 
@@ -169,36 +171,55 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
     }
   });
 
-  emit(&ctx, "Orchestrator", &format!(
-    "Session {} — orchestration starting",
-    &session.session_id.to_string()[..8]
-  ));
-  emit(&ctx, "Orchestrator", &format!(
-    "{} → {} | Budget: {} USD | Duration: {} days",
-    ctx.policy.trip.origin,
-    ctx.policy.trip.destination,
-    ctx.policy.trip.budget_max as u64,
-    ctx.policy.trip.duration_days
-  ));
+  emit(
+    &ctx,
+    "Orchestrator",
+    &format!(
+      "Session {} — orchestration starting",
+      &session.session_id.to_string()[..8]
+    ),
+  );
+  emit(
+    &ctx,
+    "Orchestrator",
+    &format!(
+      "{} → {} | Budget: {} USD | Duration: {} days",
+      ctx.policy.trip.origin,
+      ctx.policy.trip.destination,
+      ctx.policy.trip.budget_max as u64,
+      ctx.policy.trip.duration_days
+    ),
+  );
 
   // ── Step 1: Planning ──────────────────────────────────────────────────────
   *session.state.write().await = SessionState::Planning;
   let planner = PlannerAgent::new(compute.clone(), session.itinerary.clone());
-  planner.run(&ctx).await?;
+  tokio::time::timeout(Duration::from_secs(240), planner.run(&ctx))
+    .await
+    .map_err(|_| anyhow::anyhow!("PlannerAgent timed out after 240s"))??;
 
   // ── Step 2: Searching ──────────────────────────────────────────────────────
   *session.state.write().await = SessionState::Searching;
-  let searcher = SearchAgent::new(session.itinerary.clone(), session.search_results.clone(), compute.clone());
-  searcher.run(&ctx).await?;
+  let searcher = SearchAgent::new(
+    session.itinerary.clone(),
+    session.search_results.clone(),
+    compute.clone(),
+  );
+  tokio::time::timeout(Duration::from_secs(120), searcher.run(&ctx))
+    .await
+    .map_err(|_| anyhow::anyhow!("SearchAgent timed out after 120s"))??;
 
   // ── Step 3: Pre-booking budget check ──────────────────────────────────────
   *session.state.write().await = SessionState::VerifyingBudget;
   // VaultAgent first pass — just logs constraints, no bookings to verify yet
-  emit(&ctx, "VaultAgent", &format!(
-    "Pre-check: budget {:.0} USD, max single tx {:.0} USD",
-    ctx.policy.trip.budget_max,
-    ctx.policy.vault.max_single_transaction
-  ));
+  emit(
+    &ctx,
+    "VaultAgent",
+    &format!(
+      "Pre-check: budget {:.0} USD, max single tx {:.0} USD",
+      ctx.policy.trip.budget_max, ctx.policy.vault.max_single_transaction
+    ),
+  );
 
   // ── Step 4: Reservations ──────────────────────────────────────────────────
   *session.state.write().await = SessionState::Reserving;
@@ -207,7 +228,9 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
     session.search_results.clone(),
     session.bookings.clone(),
   );
-  reservations.run(&ctx).await?;
+  tokio::time::timeout(Duration::from_secs(120), reservations.run(&ctx))
+    .await
+    .map_err(|_| anyhow::anyhow!("ReservationAgent timed out after 120s"))??;
 
   // ── Step 5: Recovery (if needed) ─────────────────────────────────────────
   *session.state.write().await = SessionState::Recovering;
@@ -216,12 +239,16 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
     session.itinerary.clone(),
     session.bookings.clone(),
   );
-  recovery.run(&ctx).await?;
+  tokio::time::timeout(Duration::from_secs(60), recovery.run(&ctx))
+    .await
+    .map_err(|_| anyhow::anyhow!("RecoveryAgent timed out after 60s"))??;
 
   // ── Step 6: Vault approval ────────────────────────────────────────────────
   *session.state.write().await = SessionState::VerifyingBudget;
   let vault = VaultAgent::new(session.bookings.clone(), ctx.policy.trip.budget_max);
-  vault.run(&ctx).await?;
+  tokio::time::timeout(Duration::from_secs(30), vault.run(&ctx))
+    .await
+    .map_err(|_| anyhow::anyhow!("VaultAgent timed out after 30s"))??;
   // ── Step 6b: Human-in-the-loop gate ────────────────────────────────────
   {
     let vault_state = vault.state.lock().await;
@@ -233,18 +260,31 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
       *session.approval_tx.lock().await = Some(tx);
       *session.state.write().await = SessionState::AwaitingApproval;
 
-      emit(&ctx, "VaultAgent", &format!(
-        "⏸ Pipeline paused — {}",
-        reason
-      ));
-      emit(&ctx, "VaultAgent", "Waiting for POST /sessions/{id}/approve or /reject ...");
+      emit(
+        &ctx,
+        "VaultAgent",
+        &format!("⏸ Pipeline paused — {}", reason),
+      );
+      emit(
+        &ctx,
+        "VaultAgent",
+        "Waiting for POST /sessions/{id}/approve or /reject ...",
+      );
 
       let approved = rx.await.unwrap_or(false);
 
       if approved {
-        emit(&ctx, "VaultAgent", "✅ Trip approved by operator — continuing pipeline");
+        emit(
+          &ctx,
+          "VaultAgent",
+          "✅ Trip approved by operator — continuing pipeline",
+        );
       } else {
-        emit(&ctx, "VaultAgent", "❌ Trip rejected by operator — aborting");
+        emit(
+          &ctx,
+          "VaultAgent",
+          "❌ Trip rejected by operator — aborting",
+        );
         *session.state.write().await = SessionState::Failed;
         anyhow::bail!("Trip rejected at human-in-the-loop approval gate");
       }
@@ -259,11 +299,17 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
     session.bookings.clone(),
     session.artifact.clone(),
   );
-  artifact_agent.run(&ctx).await?;
+  tokio::time::timeout(Duration::from_secs(120), artifact_agent.run(&ctx))
+    .await
+    .map_err(|_| anyhow::anyhow!("ArtifactAgent timed out after 120s"))??;
 
   // ── Done ──────────────────────────────────────────────────────────────────
   *session.state.write().await = SessionState::Complete;
-  emit(&ctx, "Orchestrator", "✓ All agents complete — journey execution finished");
+  emit(
+    &ctx,
+    "Orchestrator",
+    "✓ All agents complete — journey execution finished",
+  );
 
   Ok(())
 }
