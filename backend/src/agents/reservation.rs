@@ -122,8 +122,21 @@ impl Agent for ReservationAgent {
       // ── Price reconciliation gate ─────────────────────────────────────────
       // Confirm the SerpAPI price still matches what's in search results
       // before proceeding to booking. Flag if price shifted > 10%.
-      let (provider, booking_url, price) =
+      let (provider, booking_url, price, seats_remaining) =
         select_best_provider(&seg, &search, ctx);
+
+      // ── Inventory warning (3.5) ────────────────────────────────────────────
+      if let Some(seats) = seats_remaining {
+        if seats < 5 {
+          ctx.log(ActivityLog::warn(
+            self.name(),
+            &format!(
+              "⚠ Low inventory: only {} seat(s) remaining on {} — booking now to secure",
+              seats, provider
+            ),
+          ));
+        }
+      }
 
       let confirmed_price = reconcile_price(price, &seg.estimated_price_usd, &provider, self.name(), ctx);
 
@@ -270,7 +283,7 @@ fn select_best_provider(
   seg: &super::TravelSegment,
   search: &SearchResults,
   ctx: &ExecutionContext,
-) -> (String, String, f64) {
+) -> (String, String, f64, Option<u32>) {
   use super::SegmentKind;
 
   match seg.kind {
@@ -287,11 +300,13 @@ fn select_best_provider(
           f.airline.clone(),
           f.booking_url.clone().unwrap_or_default(),
           f.price_usd,
+          f.seats_remaining,
         ))
         .unwrap_or_else(|| (
           seg.provider_hints.first().cloned().unwrap_or_else(|| "ANA".to_string()),
           "https://www.ana.co.jp/en/us/".to_string(),
           seg.estimated_price_usd,
+          None,
         ))
     }
 
@@ -315,11 +330,13 @@ fn select_best_provider(
             .and_then(|d| d.split_whitespace().next())
             .and_then(|n| n.parse::<f64>().ok())
             .unwrap_or(1.0),
+          None::<u32>,
         ))
         .unwrap_or_else(|| (
           seg.provider_hints.first().cloned().unwrap_or_else(|| "Dormy Inn".to_string()),
           "https://www.booking.com/".to_string(),
           seg.estimated_price_usd,
+          None,
         ))
     }
 
@@ -331,11 +348,13 @@ fn select_best_provider(
           t.provider.clone(),
           t.booking_url.clone().unwrap_or_default(),
           seg.estimated_price_usd,  // always use planner price; Firecrawl can't extract train fares
+          None::<u32>,
         ))
         .unwrap_or_else(|| (
           seg.provider_hints.first().cloned().unwrap_or_else(|| "JR Pass".to_string()),
           "https://www.japanrailpass.net/en/".to_string(),
           seg.estimated_price_usd,
+          None,
         ))
     }
   }
