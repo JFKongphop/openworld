@@ -9,7 +9,7 @@ API docs: https://open-meteo.com/en/docs
 
 use anyhow::{Context, Result};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const OPEN_METEO_BASE: &str = "https://api.open-meteo.com/v1/forecast";
 
@@ -32,7 +32,7 @@ struct DailyData {
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 /// Weather summary for a single day.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct WeatherDay {
   pub date: String,
   pub temp_max_c: f64,
@@ -42,7 +42,7 @@ pub struct WeatherDay {
   pub warning: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum WeatherCondition {
   Clear,
   PartlyCloudy,
