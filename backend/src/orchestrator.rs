@@ -20,7 +20,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{broadcast, oneshot, Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::agents::{
@@ -47,6 +47,8 @@ pub enum SessionState {
   VerifyingBudget,
   Reserving,
   Recovering,
+  /// Pipeline paused — waiting for human approval via POST /sessions/:id/approve
+  AwaitingApproval,
   Finalising,
   Complete,
   Failed,
@@ -66,6 +68,10 @@ pub struct Session {
   /// Broadcast channel for live log streaming to WebSocket subscribers
   pub log_tx: broadcast::Sender<ActivityLog>,
   pub created_at: String,
+  /// Human-in-the-loop approval gate.
+  /// Orchestrator stores a sender here when entering AwaitingApproval.
+  /// API handler calls Session::approve(true/false) to unblock the pipeline.
+  pub approval_tx: Arc<Mutex<Option<oneshot::Sender<bool>>>>,
 }
 
 impl Session {
@@ -82,6 +88,7 @@ impl Session {
       artifact: Arc::new(Mutex::new(None)),
       log_tx: tx,
       created_at: Local::now().to_rfc3339(),
+      approval_tx: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -92,6 +99,18 @@ impl Session {
 
   pub async fn current_state(&self) -> SessionState {
     self.state.read().await.clone()
+  }
+
+  /// Approve or reject a paused session.
+  /// Returns false if the session is not currently awaiting approval.
+  pub async fn approve(&self, approved: bool) -> bool {
+    let mut slot = self.approval_tx.lock().await;
+    if let Some(tx) = slot.take() {
+      let _ = tx.send(approved);
+      true
+    } else {
+      false
+    }
   }
 }
 
@@ -203,7 +222,34 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
   *session.state.write().await = SessionState::VerifyingBudget;
   let vault = VaultAgent::new(session.bookings.clone(), ctx.policy.trip.budget_max);
   vault.run(&ctx).await?;
+  // ── Step 6b: Human-in-the-loop gate ────────────────────────────────────
+  {
+    let vault_state = vault.state.lock().await;
+    if vault_state.needs_approval {
+      let reason = vault_state.approval_reason.clone().unwrap_or_default();
+      drop(vault_state); // release lock before await
 
+      let (tx, rx) = oneshot::channel::<bool>();
+      *session.approval_tx.lock().await = Some(tx);
+      *session.state.write().await = SessionState::AwaitingApproval;
+
+      emit(&ctx, "VaultAgent", &format!(
+        "⏸ Pipeline paused — {}",
+        reason
+      ));
+      emit(&ctx, "VaultAgent", "Waiting for POST /sessions/{id}/approve or /reject ...");
+
+      let approved = rx.await.unwrap_or(false);
+
+      if approved {
+        emit(&ctx, "VaultAgent", "✅ Trip approved by operator — continuing pipeline");
+      } else {
+        emit(&ctx, "VaultAgent", "❌ Trip rejected by operator — aborting");
+        *session.state.write().await = SessionState::Failed;
+        anyhow::bail!("Trip rejected at human-in-the-loop approval gate");
+      }
+    }
+  }
   // ── Step 7: Artifact creation ─────────────────────────────────────────────
   *session.state.write().await = SessionState::Finalising;
   let artifact_agent = ArtifactAgent::new(
