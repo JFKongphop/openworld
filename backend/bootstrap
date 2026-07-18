@@ -1,0 +1,5 @@
+#!/bin/bash
+# Alibaba Cloud Function Compute — Custom Runtime bootstrap
+# FC executes this file to start the OpenWorld API server.
+# The binary listens on $FC_SERVER_PORT (injected by FC, usually 9000).
+exec ./api
