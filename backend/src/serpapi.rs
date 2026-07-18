@@ -27,7 +27,13 @@ pub struct SerpApiClient {
 
 impl SerpApiClient {
   pub fn new(api_key: String) -> Self {
-    Self { api_key, http: Client::new() }
+    Self {
+      api_key,
+      http: Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default(),
+    }
   }
 }
 
@@ -92,15 +98,15 @@ impl SerpApiClient {
       .http
       .get(SERPAPI_BASE)
       .query(&[
-        ("engine",              "google_flights"),
-        ("departure_id",        origin),
-        ("arrival_id",          dest),
-        ("outbound_date",       date),
-        ("currency",            "USD"),
-        ("hl",                  "en"),
-        ("type",                "2"),  // one-way
-        ("travel_class",        "1"),  // economy
-        ("api_key",             &self.api_key),
+        ("engine", "google_flights"),
+        ("departure_id", origin),
+        ("arrival_id", dest),
+        ("outbound_date", date),
+        ("currency", "USD"),
+        ("hl", "en"),
+        ("type", "2"),         // one-way
+        ("travel_class", "1"), // economy
+        ("api_key", &self.api_key),
       ])
       .send()
       .await
@@ -134,18 +140,23 @@ impl SerpApiClient {
 
 fn flight_group_to_option(g: &FlightGroup, origin: &str, dest: &str) -> Option<FlightOption> {
   let price = g.price?;
-  if price <= 0.0 { return None; }
+  if price <= 0.0 {
+    return None;
+  }
 
   let first_leg = g.flights.first()?;
-  let airline   = first_leg.airline.clone().unwrap_or_else(|| "Unknown".to_string());
+  let airline = first_leg
+    .airline
+    .clone()
+    .unwrap_or_else(|| "Unknown".to_string());
   let departure = first_leg
     .departure_airport
     .as_ref()
     .and_then(|a| a.time.clone())
     .unwrap_or_else(|| "—".to_string());
 
-  let last_leg  = g.flights.last()?;
-  let arrival   = last_leg
+  let last_leg = g.flights.last()?;
+  let arrival = last_leg
     .arrival_airport
     .as_ref()
     .and_then(|a| a.time.clone())
@@ -153,9 +164,11 @@ fn flight_group_to_option(g: &FlightGroup, origin: &str, dest: &str) -> Option<F
 
   // Total duration = sum of all leg durations (minutes → "Xh Ym")
   let total_mins: u32 = g.flights.iter().filter_map(|l| l.duration).sum::<u32>()
-    + g.layovers.iter()
-        .filter_map(|l| l["duration"].as_u64())
-        .sum::<u64>() as u32;
+    + g
+      .layovers
+      .iter()
+      .filter_map(|l| l["duration"].as_u64())
+      .sum::<u64>() as u32;
   let duration = if total_mins > 0 {
     format!("{}h{}m", total_mins / 60, total_mins % 60)
   } else {
@@ -184,7 +197,11 @@ fn parse_seats_from_extensions(extensions: &[String]) -> Option<u32> {
     let lower = ext.to_lowercase();
     if lower.contains("seat") && lower.contains("left") {
       // Extract the leading number, e.g. "2 seats left at this price" → 2
-      if let Some(n) = lower.split_whitespace().next().and_then(|w| w.parse::<u32>().ok()) {
+      if let Some(n) = lower
+        .split_whitespace()
+        .next()
+        .and_then(|w| w.parse::<u32>().ok())
+      {
         return Some(n);
       }
     }
@@ -242,14 +259,14 @@ impl SerpApiClient {
       .http
       .get(SERPAPI_BASE)
       .query(&[
-        ("engine",       "google_hotels"),
-        ("q",            &format!("hotels in {city}")),
-        ("check_in_date",  checkin),
+        ("engine", "google_hotels"),
+        ("q", &format!("hotels in {city}")),
+        ("check_in_date", checkin),
         ("check_out_date", checkout),
-        ("currency",     "USD"),
-        ("hl",           "en"),
-        ("adults",       "1"),
-        ("api_key",      &self.api_key),
+        ("currency", "USD"),
+        ("hl", "en"),
+        ("adults", "1"),
+        ("api_key", &self.api_key),
       ])
       .send()
       .await
@@ -283,26 +300,27 @@ fn hotel_property_to_option(
   min_rating: f64,
   max_per_night: f64,
 ) -> Option<HotelOption> {
-  let name   = p.name.clone()?;
+  let name = p.name.clone()?;
   let rating = p.overall_rating.unwrap_or(0.0);
-  if rating < min_rating { return None; }
+  if rating < min_rating {
+    return None;
+  }
 
   let price = p
     .rate_per_night
     .as_ref()
     .and_then(|r| r.extracted_lowest)
     .unwrap_or(0.0);
-  if price <= 0.0 || price > max_per_night { return None; }
+  if price <= 0.0 || price > max_per_night {
+    return None;
+  }
 
   let near_station = p.amenities.iter().any(|a| {
     let a = a.to_lowercase();
     a.contains("transit") || a.contains("station") || a.contains("metro")
   });
 
-  let location = p
-    .neighborhood
-    .clone()
-    .unwrap_or_else(|| city.to_string());
+  let location = p.neighborhood.clone().unwrap_or_else(|| city.to_string());
 
   Some(HotelOption {
     name,
@@ -318,7 +336,6 @@ fn hotel_property_to_option(
 
 /// Build SerpApiClient from SERPAPI_KEY env var.
 pub fn build_serpapi() -> anyhow::Result<SerpApiClient> {
-  let key = std::env::var("SERPAPI_KEY")
-    .context("SERPAPI_KEY not set in .env")?;
+  let key = std::env::var("SERPAPI_KEY").context("SERPAPI_KEY not set in .env")?;
   Ok(SerpApiClient::new(key))
 }
