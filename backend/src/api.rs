@@ -20,6 +20,10 @@ Endpoints:
 
   GET    /ws/{id}                   WebSocket — streams ActivityLog as JSON lines
 
+  POST   /sessions/{id}/approve     {} → unblocks AwaitingApproval, continues pipeline
+  POST   /sessions/{id}/reject      {} → unblocks AwaitingApproval, cancels pipeline
+  GET    /sessions/{id}/verify      → verifies HMAC execution proof
+
   GET    /health                    → { "status": "ok" }
 */
 
@@ -286,6 +290,101 @@ async fn get_report_handler(
   )
 }
 
+/// POST /sessions/{id}/approve — unblock an AwaitingApproval session, continue pipeline
+#[axum::debug_handler]
+async fn approve_handler(
+  State(state): State<AppState>,
+  Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+  let session = get_session(&state.sessions, id).await?;
+  if session.current_state().await != SessionState::AwaitingApproval {
+    return Err(anyhow::anyhow!("Session {} is not awaiting approval", id).into());
+  }
+  let sent = session.approve(true).await;
+  Ok(Json(json!({
+    "session_id": id.to_string(),
+    "approved": true,
+    "sent": sent,
+    "message": "Pipeline will continue with reservations"
+  })))
+}
+
+/// POST /sessions/{id}/reject — unblock an AwaitingApproval session, cancel pipeline
+#[axum::debug_handler]
+async fn reject_handler(
+  State(state): State<AppState>,
+  Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+  let session = get_session(&state.sessions, id).await?;
+  if session.current_state().await != SessionState::AwaitingApproval {
+    return Err(anyhow::anyhow!("Session {} is not awaiting approval", id).into());
+  }
+  let sent = session.approve(false).await;
+  Ok(Json(json!({
+    "session_id": id.to_string(),
+    "approved": false,
+    "sent": sent,
+    "message": "Pipeline cancelled — session will transition to Failed"
+  })))
+}
+
+/// GET /sessions/{id}/verify — re-compute HMAC and verify execution proof
+#[axum::debug_handler]
+async fn verify_handler(
+  State(state): State<AppState>,
+  Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+  let session = get_session(&state.sessions, id).await?;
+
+  let artifact = session.artifact.lock().await.clone()
+    .ok_or_else(|| anyhow::anyhow!("No artifact yet for session {} — run to completion first", id))?;
+
+  let stored_proof = artifact.execution_proof.clone()
+    .ok_or_else(|| anyhow::anyhow!("Artifact missing execution_proof field"))?;
+
+  // Reconstruct the exact preimage used during signing:
+  //   session_id | policy_constraint_json | booking_ref1,booking_ref2,...
+  let bookings = session.bookings.lock().await.clone();
+  let booking_refs = bookings.iter()
+    .map(|b| b.reference.as_str())
+    .collect::<Vec<_>>()
+    .join(",");
+  let preimage = format!(
+    "{}|{}|{}",
+    session.session_id,
+    session.policy.to_constraint_json(),
+    booking_refs
+  );
+
+  let operator_key = std::env::var("OPERATOR_SIGNING_KEY")
+    .unwrap_or_else(|_| "openworld-dev-key".to_string());
+
+  // Re-compute HMAC-SHA256
+  use hmac::{Hmac, Mac};
+  use sha2::Sha256;
+  type HmacSha256 = Hmac<Sha256>;
+  let mut mac = HmacSha256::new_from_slice(operator_key.as_bytes())
+    .expect("HMAC accepts any key length");
+  mac.update(preimage.as_bytes());
+  let recomputed = hex::encode(mac.finalize().into_bytes());
+
+  let valid = recomputed == stored_proof;
+
+  Ok(Json(json!({
+    "session_id":    id.to_string(),
+    "artifact_id":   artifact.artifact_id,
+    "valid":         valid,
+    "algorithm":     "HMAC-SHA256",
+    "stored_proof":  &stored_proof[..16],   // first 16 chars only — don't leak full sig
+    "recomputed":    &recomputed[..16],
+    "message": if valid {
+      "✓ Execution proof verified — this artifact was signed by the operator key"
+    } else {
+      "✗ Proof mismatch — artifact may have been tampered with or wrong key"
+    }
+  })))
+}
+
 /// GET /health
 async fn health() -> impl IntoResponse {
   Json(json!({
@@ -348,6 +447,9 @@ async fn main() {
     .route("/sessions/:id/logs", get(get_logs_handler))
     .route("/sessions/:id/artifact", get(get_artifact_handler))
     .route("/sessions/:id/report", get(get_report_handler))
+    .route("/sessions/:id/approve", post(approve_handler))
+    .route("/sessions/:id/reject", post(reject_handler))
+    .route("/sessions/:id/verify", get(verify_handler))
     .route("/ws/:id", get(ws_handler))
     .layer(cors)
     .with_state(state);
@@ -357,7 +459,9 @@ async fn main() {
   println!("\x1b[2m  POST /sessions          — create session from travel.md\x1b[0m");
   println!("\x1b[2m  POST /sessions/:id/start — launch orchestration\x1b[0m");
   println!("\x1b[2m  GET  /sessions/:id/report — markdown travel report\x1b[0m");
-  println!("\x1b[2m  GET  /ws/:id             — live WebSocket stream\x1b[0m");
+  println!("\x1b[2m  POST /sessions/:id/approve  — unblock human-in-the-loop gate\x1b[0m");
+  println!("\x1b[2m  POST /sessions/:id/reject   — cancel paused pipeline\x1b[0m");
+  println!("\x1b[2m  GET  /sessions/:id/verify   — HMAC execution proof verification\x1b[0m");
 
   let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
   axum::serve(listener, app).await.unwrap();
