@@ -244,6 +244,10 @@ pub struct JourneyArtifact {
   /// Falls back to the operator wallet if not specified.
   #[serde(default)]
   pub owner_address: Option<String>,
+  /// HMAC-SHA256 execution proof — verifiable by anyone with OPERATOR_SIGNING_KEY.
+  /// Preimage: `session_id|policy_constraint_json|booking_ref1,booking_ref2,...`
+  #[serde(default)]
+  pub execution_proof: Option<String>,
 }
 
 // ─── Execution Context ────────────────────────────────────────────────────────

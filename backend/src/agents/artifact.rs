@@ -283,6 +283,7 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       created_at: Local::now().to_rfc3339(),
       report_path: report_path.ok(),
       owner_address: ctx.policy.trip.owner.clone(),
+      execution_proof: Some(execution_proof.clone()),
     };
 
     ctx.log(ActivityLog::success(
