@@ -2,12 +2,12 @@
 Agent framework — shared types, trait, and execution context for all travel agents.
 
 Agents:
-  PlannerAgent      — itinerary generation via 0G Compute
+  PlannerAgent      — itinerary generation via Qwen AI
   SearchAgent       — flight/hotel/transport discovery via Firecrawl
   ReservationAgent  — booking execution via OpenClaw browser automation
-  RecoveryAgent     — failure recovery and replanning via 0G Compute
+  RecoveryAgent     — failure recovery and replanning via Qwen AI
   VaultAgent        — budget enforcement and payment authorisation
-  ArtifactAgent     — ERC-7857 journey artifact creation + 0G Storage persistence
+  ArtifactAgent     — ERC-7857 journey artifact creation + local storage persistence
 */
 
 pub mod artifact;

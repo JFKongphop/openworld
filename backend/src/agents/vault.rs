@@ -36,7 +36,9 @@ impl VaultState {
   }
 
   pub fn spent_pct(&self) -> f64 {
-    if self.budget_total <= 0.0 { return 0.0; }
+    if self.budget_total <= 0.0 {
+      return 0.0;
+    }
     self.spent / self.budget_total * 100.0
   }
 }
@@ -89,10 +91,13 @@ impl Agent for VaultAgent {
 
     ctx.log(ActivityLog::action(
       self.name(),
-      &format!("Checking budget — total: {} USD", ctx.policy.trip.budget_max as u64),
+      &format!(
+        "Checking budget — total: {} USD",
+        ctx.policy.trip.budget_max as u64
+      ),
     ));
 
-    let bookings = self.bookings.lock().await.clone();
+    let mut bookings = self.bookings.lock().await;
     let mut vault = self.state.lock().await;
 
     vault.budget_total = ctx.policy.trip.budget_max;
@@ -103,7 +108,7 @@ impl Agent for VaultAgent {
 
     let duration_days = ctx.policy.trip.duration_days.max(1) as f64;
 
-    for booking in &bookings {
+    for booking in bookings.iter_mut() {
       if booking.status != BookingStatus::Confirmed {
         continue;
       }
@@ -129,6 +134,7 @@ impl Agent for VaultAgent {
             ctx.policy.vault.max_single_transaction
           ),
         });
+        booking.status = super::BookingStatus::Cancelled;
         continue;
       }
 
@@ -138,7 +144,9 @@ impl Agent for VaultAgent {
           self.name(),
           &format!(
             "⚠ {} ({:.0} USD) would exceed budget — remaining: {:.0} USD",
-            booking.provider, amount, vault.remaining()
+            booking.provider,
+            amount,
+            vault.remaining()
           ),
         ));
         vault.transactions.push(VaultTransaction {
@@ -148,6 +156,7 @@ impl Agent for VaultAgent {
           approved: false,
           reason: "Exceeds remaining budget".to_string(),
         });
+        booking.status = super::BookingStatus::Cancelled;
         continue;
       }
 
@@ -165,7 +174,9 @@ impl Agent for VaultAgent {
         self.name(),
         &format!(
           "✓ Payment approved — {} {:.0} USD  |  Remaining: {:.0} USD",
-          booking.provider, amount, vault.remaining()
+          booking.provider,
+          amount,
+          vault.remaining()
         ),
       ));
     }
@@ -179,7 +190,9 @@ impl Agent for VaultAgent {
       self.name(),
       &format!(
         "💰 Spend rate: {:.0}% of budget used  |  ${:.0}/day remaining  |  ${:.0} total remaining",
-        spent_pct, daily_remaining, vault.remaining()
+        spent_pct,
+        daily_remaining,
+        vault.remaining()
       ),
     ));
 
@@ -200,7 +213,10 @@ impl Agent for VaultAgent {
         "{:.0}% of budget committed ({:.0} / {:.0} USD) — human approval required before proceeding",
         spent_pct, vault.spent, vault.budget_total
       );
-      ctx.log(ActivityLog::warn(self.name(), &format!("🔐 Approval gate triggered: {}", reason)));
+      ctx.log(ActivityLog::warn(
+        self.name(),
+        &format!("🔐 Approval gate triggered: {}", reason),
+      ));
       vault.needs_approval = true;
       vault.approval_reason = Some(reason);
     }

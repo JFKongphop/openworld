@@ -24,10 +24,11 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::{
-  ActivityLog, Agent, BookingHash, BookingResult, BookingStatus, ExecutionContext,
-  Itinerary, JourneyArtifact,
+  ActivityLog, Agent, BookingHash, BookingResult, BookingStatus, ExecutionContext, Itinerary,
+  JourneyArtifact,
 };
 use crate::memory_store::MemoryStore;
+use crate::oss_store::build_oss_store;
 use crate::qwen_client::QwenClient;
 use crate::report::generate_travel_report;
 
@@ -68,7 +69,10 @@ impl Agent for ArtifactAgent {
   }
 
   async fn run(&self, ctx: &ExecutionContext) -> Result<()> {
-    ctx.log(ActivityLog::action(self.name(), "Preparing journey artifact..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Preparing journey artifact...",
+    ));
 
     let itinerary = self.itinerary.lock().await.clone();
     let bookings = self.bookings.lock().await.clone();
@@ -76,7 +80,7 @@ impl Agent for ArtifactAgent {
     // Build booking hashes
     let booking_hashes: Vec<BookingHash> = bookings
       .iter()
-      .filter(|b| b.status == BookingStatus::Confirmed)
+      .filter(|b| matches!(b.status, BookingStatus::Confirmed | BookingStatus::Ticketed))
       .map(|b| BookingHash {
         segment_id: b.segment_id.clone(),
         booking_type: b.booking_type.clone(),
@@ -103,17 +107,21 @@ impl Agent for ArtifactAgent {
     let execution_logs_hash = format!("{:x}", md5::compute(log_preimage.as_bytes()));
 
     // HMAC-SHA256 execution signature using operator key
-    let operator_key = std::env::var("OPERATOR_SIGNING_KEY")
-      .unwrap_or_else(|_| "openworld-dev-key".to_string());
+    let operator_key =
+      std::env::var("OPERATOR_SIGNING_KEY").unwrap_or_else(|_| "openworld-dev-key".to_string());
     let execution_proof = hmac_sign(&operator_key, &log_preimage);
     ctx.log(ActivityLog::info(
       self.name(),
-      &format!("Execution proof: {}...{}", &execution_proof[..8], &execution_proof[execution_proof.len()-8..]),
+      &format!(
+        "Execution proof: {}...{}",
+        &execution_proof[..8],
+        &execution_proof[execution_proof.len() - 8..]
+      ),
     ));
 
     let total_spent: f64 = bookings
       .iter()
-      .filter(|b| b.status == BookingStatus::Confirmed)
+      .filter(|b| matches!(b.status, BookingStatus::Confirmed | BookingStatus::Ticketed))
       .map(|b| b.price_usd)
       .sum();
 
@@ -132,10 +140,16 @@ impl Agent for ArtifactAgent {
       booking_hashes.len()
     );
 
-    ctx.log(ActivityLog::info(self.name(), &format!("Trip: {}", trip_summary)));
+    ctx.log(ActivityLog::info(
+      self.name(),
+      &format!("Trip: {}", trip_summary),
+    ));
 
     // Persist artifact record to MemoryStore
-    ctx.log(ActivityLog::action(self.name(), "Persisting artifact to local store..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Persisting artifact to local store...",
+    ));
 
     let artifact_id = Uuid::new_v4().to_string();
     let artifact_record = serde_json::json!({
@@ -154,7 +168,10 @@ impl Agent for ArtifactAgent {
       Ok(h) => {
         ctx.log(ActivityLog::success(
           self.name(),
-          &format!("✓ Artifact stored locally — hash: {}...", &h[..16.min(h.len())]),
+          &format!(
+            "✓ Artifact stored locally — hash: {}...",
+            &h[..16.min(h.len())]
+          ),
         ));
         Some(h)
       }
@@ -167,11 +184,34 @@ impl Agent for ArtifactAgent {
       }
     };
 
+    // ── Upload artifact JSON to Alibaba Cloud OSS ──────────────────────────
+    if let Some(oss) = build_oss_store() {
+      ctx.log(ActivityLog::action(
+        self.name(),
+        "Uploading artifact to Alibaba Cloud OSS...",
+      ));
+      let artifact_bytes = serde_json::to_vec_pretty(&artifact_record).unwrap_or_default();
+      let oss_key = format!("artifacts/{}.json", artifact_id);
+      match oss.put(&oss_key, &artifact_bytes, "application/json").await {
+        Ok(url) => ctx.log(ActivityLog::success(
+          self.name(),
+          &format!("☁️  Artifact → {}", url),
+        )),
+        Err(e) => ctx.log(ActivityLog::warn(
+          self.name(),
+          &format!("OSS artifact upload skipped ({})", e),
+        )),
+      }
+    }
+
     // ── Generate destination travel tips via Qwen ─────────────────────────
-    ctx.log(ActivityLog::action(self.name(), "Generating destination guide via Qwen..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Generating destination guide via Qwen...",
+    ));
     let city_name = ctx.policy.resolved_city_name().to_string();
-    let dep_date  = &ctx.policy.trip.departure_date;
-    let ret_date  = &ctx.policy.trip.return_date;
+    let dep_date = &ctx.policy.trip.departure_date;
+    let ret_date = &ctx.policy.trip.return_date;
     let tips_prompt = format!(
       r#"You are a travel expert writing a destination guide for a traveller visiting {city_name} from {dep_date} to {ret_date}.
 
@@ -216,7 +256,10 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
     let travel_tips = self.compute.infer(&tips_prompt).await.ok();
 
     // ── Generate Markdown travel report ──────────────────────────────────────
-    ctx.log(ActivityLog::action(self.name(), "Generating travel report..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Generating travel report...",
+    ));
 
     let itinerary_snap = self.itinerary.lock().await.clone();
     let report_md = generate_travel_report(
@@ -232,7 +275,11 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       travel_tips.as_deref(),
     );
 
-    let report_path = save_report(&ctx.policy.trip.destination, &ctx.session_id.to_string(), &report_md);
+    let report_path = save_report(
+      &ctx.policy.trip.destination,
+      &ctx.session_id.to_string(),
+      &report_md,
+    );
     match &report_path {
       Ok(p) => ctx.log(ActivityLog::success(
         self.name(),
@@ -252,7 +299,10 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
           Ok(h) => {
             ctx.log(ActivityLog::success(
               self.name(),
-              &format!("✓ Report stored locally — hash: {}...", &h[..16.min(h.len())]),
+              &format!(
+                "✓ Report stored locally — hash: {}...",
+                &h[..16.min(h.len())]
+              ),
             ));
             Some(h)
           }
@@ -267,6 +317,26 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
       }
       Err(_) => None,
     };
+
+    // ── Upload Markdown report to Alibaba Cloud OSS ──────────────────────────
+    if let Some(oss) = build_oss_store() {
+      let report_filename =
+        crate::report::report_filename(&ctx.policy.trip.destination, &ctx.session_id.to_string());
+      let oss_key = format!("reports/{}", report_filename);
+      match oss
+        .put(&oss_key, report_md.as_bytes(), "text/markdown")
+        .await
+      {
+        Ok(url) => ctx.log(ActivityLog::success(
+          self.name(),
+          &format!("☁️  Report   → {}", url),
+        )),
+        Err(e) => ctx.log(ActivityLog::warn(
+          self.name(),
+          &format!("OSS report upload skipped ({})", e),
+        )),
+      }
+    }
 
     let artifact = JourneyArtifact {
       artifact_id: artifact_id.clone(),
@@ -288,10 +358,16 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
 
     ctx.log(ActivityLog::success(
       self.name(),
-      &format!("✓ Journey artifact created — ID: {}", &artifact.artifact_id[..8]),
+      &format!(
+        "✓ Journey artifact created — ID: {}",
+        &artifact.artifact_id[..8]
+      ),
     ));
 
-    ctx.log(ActivityLog::success(self.name(), "Execution proof complete."));
+    ctx.log(ActivityLog::success(
+      self.name(),
+      "Execution proof complete.",
+    ));
 
     *self.artifact.lock().await = Some(artifact);
     Ok(())
@@ -302,11 +378,10 @@ Keep each section to 4-6 bullet points. Be specific and practical. Do NOT output
 
 /// Write a Markdown report to the reports directory and return the absolute path.
 fn save_report(destination: &str, session_id: &str, content: &str) -> Result<String> {
-  let reports_dir = std::env::var("REPORTS_DIR")
-    .unwrap_or_else(|_| {
-      let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-      manifest.join("reports").to_string_lossy().to_string()
-    });
+  let reports_dir = std::env::var("REPORTS_DIR").unwrap_or_else(|_| {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest.join("reports").to_string_lossy().to_string()
+  });
 
   std::fs::create_dir_all(&reports_dir)?;
 
@@ -321,11 +396,14 @@ fn save_report(destination: &str, session_id: &str, content: &str) -> Result<Str
 /// Produce an HMAC-SHA256 hex digest of `message` using `key`.
 /// Used as a lightweight execution proof — verifiable by anyone with the operator key.
 fn hmac_sign(key: &str, message: &str) -> String {
-  let mut mac = HmacSha256::new_from_slice(key.as_bytes())
-    .expect("HMAC accepts any key length");
+  let mut mac = HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC accepts any key length");
   mac.update(message.as_bytes());
   let result = mac.finalize();
-  result.into_bytes().iter().map(|b| format!("{b:02x}")).collect()
+  result
+    .into_bytes()
+    .iter()
+    .map(|b| format!("{b:02x}"))
+    .collect()
 }
 
 fn hash_booking(b: &BookingResult) -> String {

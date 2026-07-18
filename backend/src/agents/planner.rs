@@ -1,5 +1,5 @@
 /*!
-PlannerAgent — itinerary generation powered by 0G Compute.
+PlannerAgent — itinerary generation powered by Qwen AI.
 
 Takes a TravelPolicy and produces a structured Itinerary with:
   - Daily segments (flights, hotels, trains)
@@ -15,7 +15,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::{
-  ActivityLog, Agent, DailyActivity, DayPlan, ExecutionContext, Itinerary, SegmentKind, TravelSegment,
+  ActivityLog, Agent, DailyActivity, DayPlan, ExecutionContext, Itinerary, SegmentKind,
+  TravelSegment,
 };
 use crate::mapbox::build_mapbox;
 use crate::qwen_client::QwenClient;
@@ -42,12 +43,18 @@ impl Agent for PlannerAgent {
   }
 
   async fn run(&self, ctx: &ExecutionContext) -> Result<()> {
-    ctx.log(ActivityLog::info(self.name(), "Loading travel.md constraints..."));
+    ctx.log(ActivityLog::info(
+      self.name(),
+      "Loading travel.md constraints...",
+    ));
     let city_name = ctx.policy.resolved_city_name();
     if ctx.policy.is_city_code() {
       ctx.log(ActivityLog::info(
         self.name(),
-        &format!("✓ Destination: {} ({}) — single-city mode", ctx.policy.trip.destination, city_name),
+        &format!(
+          "✓ Destination: {} ({}) — single-city mode",
+          ctx.policy.trip.destination, city_name
+        ),
       ));
     } else {
       ctx.log(ActivityLog::info(
@@ -65,22 +72,28 @@ impl Agent for PlannerAgent {
     ));
 
     if ctx.policy.flight.avoid_red_eye {
-      ctx.log(ActivityLog::info(self.name(), "✓ Overnight flights excluded"));
+      ctx.log(ActivityLog::info(
+        self.name(),
+        "✓ Overnight flights excluded",
+      ));
     }
     if ctx.policy.transport.prefer_train {
       ctx.log(ActivityLog::info(self.name(), "✓ Train priority enabled"));
     }
 
-    ctx.log(ActivityLog::action(self.name(), "Generating itinerary via 0G Compute..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Generating itinerary via Qwen AI...",
+    ));
 
     let constraints = ctx.policy.to_constraint_json();
-    let origin      = &ctx.policy.trip.origin;
+    let origin = &ctx.policy.trip.origin;
     let destination = &ctx.policy.trip.destination;
-    let dep_date    = &ctx.policy.trip.departure_date;
-    let ret_date    = &ctx.policy.trip.return_date;
-    let days        = ctx.policy.trip.duration_days;
+    let dep_date = &ctx.policy.trip.departure_date;
+    let ret_date = &ctx.policy.trip.return_date;
+    let days = ctx.policy.trip.duration_days;
     let single_city = ctx.policy.is_city_code();
-    let city_name   = ctx.policy.resolved_city_name().to_string();
+    let city_name = ctx.policy.resolved_city_name().to_string();
 
     let city_rules = if single_city {
       format!(
@@ -183,7 +196,10 @@ Rules:
     let itinerary = parse_itinerary_response(&raw, &ctx.policy)?;
 
     // ── Two-pass self-critique ────────────────────────────────────────────────
-    ctx.log(ActivityLog::action(self.name(), "Qwen self-critique pass — reviewing draft itinerary..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Qwen self-critique pass — reviewing draft itinerary...",
+    ));
     let itinerary = self.critique_and_revise(itinerary, &raw, ctx).await;
 
     ctx.log(ActivityLog::success(
@@ -236,7 +252,10 @@ Rules:
     }
 
     // ── Mapbox + Weather validation pass ─────────────────────────────────────
-    ctx.log(ActivityLog::action(self.name(), "Validating day plans (routes + weather)..."));
+    ctx.log(ActivityLog::action(
+      self.name(),
+      "Validating day plans (routes + weather)...",
+    ));
     self.validate_plan(&itinerary, ctx).await;
 
     *self.itinerary.lock().await = Some(itinerary);
@@ -256,23 +275,25 @@ impl PlannerAgent {
     draft_raw: &str,
     ctx: &ExecutionContext,
   ) -> Itinerary {
-    let budget    = ctx.policy.trip.budget_max;
-    let origin    = &ctx.policy.trip.origin;
-    let dest      = ctx.policy.resolved_city_name().to_string();
-    let dep_date  = &ctx.policy.trip.departure_date;
-    let ret_date  = &ctx.policy.trip.return_date;
+    let budget = ctx.policy.trip.budget_max;
+    let origin = &ctx.policy.trip.origin;
+    let dest = ctx.policy.resolved_city_name().to_string();
+    let dep_date = &ctx.policy.trip.departure_date;
+    let ret_date = &ctx.policy.trip.return_date;
+    let max_hotel = ctx.policy.hotel.max_price_per_night;
 
     // Turn 1: critique the draft
     let critique_prompt = format!(
       r#"You are a senior travel planner reviewing a draft itinerary.
 
 Budget: {budget} USD  |  From: {origin}  |  To: {dest}  |  {dep_date} → {ret_date}
+Hotel policy cap: {max_hotel:.0} USD/night MAX — do NOT suggest increasing hotel prices above this limit.
 
 DRAFT ITINERARY (JSON):
 {draft_raw}
 
 Review this itinerary critically. Identify exactly 3 specific improvements:
-1. A budget/cost concern (over-spending, unrealistic price, missed saving)
+1. A budget/cost concern (over-spending, unrealistic price, missed saving) — NOTE: hotel prices may be lower than market rate by design (policy cap applies); flag only if total budget is exceeded
 2. A logistics concern (unrealistic travel time, scheduling conflict, missing segment)
 3. An experience concern (missed must-see, poor hotel location, bad activity order)
 
@@ -280,21 +301,53 @@ Output ONLY a JSON object with this structure — no markdown, no explanation:
 {{"issue_1":"...","fix_1":"...","issue_2":"...","fix_2":"...","issue_3":"...","fix_3":"..."}}"#
     );
 
-    let critique = match self.compute.infer_with_system(
-      "You are a meticulous travel planning critic. Find real problems, not minor nitpicks.",
-      &critique_prompt,
-      Some(512),
-    ).await {
+    let critique = match self
+      .compute
+      .infer_with_system(
+        "You are a meticulous travel planning critic. Find real problems, not minor nitpicks.",
+        &critique_prompt,
+        Some(512),
+      )
+      .await
+    {
       Ok(c) => c,
       Err(_) => {
-        ctx.log(ActivityLog::warn(self.name(), "Critique pass skipped (Qwen unavailable)"));
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          "Critique pass skipped (Qwen unavailable)",
+        ));
         return draft;
       }
     };
 
-    // Extract critique text for logging
-    let critique_preview = critique.chars().take(200).collect::<String>();
-    ctx.log(ActivityLog::info(self.name(), &format!("Critique: {}", critique_preview)));
+    // Log each critique issue on its own line
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&critique) {
+      if let Some(obj) = val.as_object() {
+        for (key, value) in obj {
+          let text_owned;
+          let text = if let Some(s) = value.as_str() {
+            s
+          } else {
+            text_owned = value.to_string();
+            &text_owned
+          };
+          ctx.log(ActivityLog::info(
+            self.name(),
+            &format!("Critique {}: {}", key, text),
+          ));
+        }
+      } else {
+        ctx.log(ActivityLog::info(
+          self.name(),
+          &format!("Critique: {}", critique),
+        ));
+      }
+    } else {
+      ctx.log(ActivityLog::info(
+        self.name(),
+        &format!("Critique: {}", critique),
+      ));
+    }
 
     // Turn 2: revise with the critique in context
     let revise_prompt = format!(
@@ -302,6 +355,7 @@ Output ONLY a JSON object with this structure — no markdown, no explanation:
 
 Original constraints:
   Budget: {budget} USD  |  From: {origin}  |  To: {dest}  |  {dep_date} → {ret_date}
+  Hotel price cap: {max_hotel:.0} USD/night MAXIMUM — hotel estimated_price_usd MUST NOT exceed this.
 
 Critic's feedback:
 {critique}
@@ -311,13 +365,17 @@ Original draft:
 
 Apply the critic's fixes. Output ONLY a revised JSON itinerary with the same structure as the draft.
 Preserve all fields. Keep dates strictly between {dep_date} and {ret_date}.
+Hotel segment prices MUST stay at or below {max_hotel:.0} USD per night.
 No markdown, no explanation — just the JSON object."#
     );
 
     let revised_raw = match self.compute.infer(&revise_prompt).await {
       Ok(r) => r,
       Err(_) => {
-        ctx.log(ActivityLog::warn(self.name(), "Revision pass failed — keeping draft"));
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          "Revision pass failed — keeping draft",
+        ));
         return draft;
       }
     };
@@ -336,7 +394,10 @@ No markdown, no explanation — just the JSON object."#
         revised
       }
       Err(_) => {
-        ctx.log(ActivityLog::warn(self.name(), "Revision parse failed — keeping draft"));
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          "Revision parse failed — keeping draft",
+        ));
         draft
       }
     }
@@ -349,14 +410,32 @@ impl PlannerAgent {
   ///   2. Weather advisories (Open-Meteo forecast warnings)
   pub async fn validate_plan(&self, itinerary: &Itinerary, ctx: &ExecutionContext) {
     let city = ctx.policy.resolved_city_name().to_string();
-    let dep  = &ctx.policy.trip.departure_date;
-    let ret  = &ctx.policy.trip.return_date;
+    let dep = &ctx.policy.trip.departure_date;
+    let ret = &ctx.policy.trip.return_date;
 
     // ── Weather check ────────────────────────────────────────────────────────
     let weather_client = build_weather();
     match weather_client.forecast_for_city(&city, dep, ret).await {
+      Ok(forecast) if forecast.is_empty() => {
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          "Weather forecast returned no data",
+        ));
+      }
       Ok(forecast) => {
-        ctx.log(ActivityLog::info(self.name(), "🌤️  Weather forecast loaded:"));
+        let has_seasonal = forecast.iter().any(|d| {
+          d.warning
+            .as_deref()
+            .map_or(false, |w| w.contains("seasonal estimate"))
+        });
+        if has_seasonal {
+          ctx.log(ActivityLog::info(self.name(), "🌤️  Weather: live forecast + seasonal estimates (trip extends beyond 16-day API window):"));
+        } else {
+          ctx.log(ActivityLog::info(
+            self.name(),
+            "🌤️  Weather forecast loaded:",
+          ));
+        }
         for day in &forecast {
           let msg = format!(
             "  {} {} {:.0}°C–{:.0}°C{}",
@@ -364,7 +443,11 @@ impl PlannerAgent {
             day.condition.as_emoji(),
             day.temp_min_c,
             day.temp_max_c,
-            day.warning.as_deref().map(|w| format!(" ⚠ {}", w)).unwrap_or_default(),
+            day
+              .warning
+              .as_deref()
+              .map(|w| format!(" ⚠ {}", w))
+              .unwrap_or_default(),
           );
           if day.warning.is_some() {
             ctx.log(ActivityLog::warn(self.name(), &msg));
@@ -374,7 +457,10 @@ impl PlannerAgent {
         }
       }
       Err(e) => {
-        ctx.log(ActivityLog::warn(self.name(), &format!("Weather forecast unavailable: {}", e)));
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          &format!("Weather check skipped: {}", e),
+        ));
       }
     }
 
@@ -382,17 +468,24 @@ impl PlannerAgent {
     let mapbox = match build_mapbox() {
       Ok(m) => m,
       Err(_) => {
-        ctx.log(ActivityLog::warn(self.name(), "Mapbox unavailable — skipping route feasibility check"));
+        ctx.log(ActivityLog::warn(
+          self.name(),
+          "Mapbox unavailable — skipping route feasibility check",
+        ));
         return;
       }
     };
 
     for day in &itinerary.daily_plan {
-      let locations: Vec<String> = day.activities.iter()
+      let locations: Vec<String> = day
+        .activities
+        .iter()
         .map(|a| format!("{}, {}", a.location, city))
         .collect();
 
-      if locations.len() < 2 { continue; }
+      if locations.len() < 2 {
+        continue;
+      }
 
       let (feasible, total_mins, warning) = mapbox.validate_day_plan(&locations).await;
 
@@ -404,7 +497,10 @@ impl PlannerAgent {
       } else if total_mins > 0 {
         ctx.log(ActivityLog::info(
           self.name(),
-          &format!("Day {} ({}): {}min transit — ✓ feasible", day.day, day.title, total_mins),
+          &format!(
+            "Day {} ({}): {}min transit — ✓ feasible",
+            day.day, day.title, total_mins
+          ),
         ));
       }
 
@@ -423,7 +519,10 @@ impl PlannerAgent {
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
-fn parse_itinerary_response(raw: &str, policy: &crate::travel_spec::TravelPolicy) -> Result<Itinerary> {
+fn parse_itinerary_response(
+  raw: &str,
+  policy: &crate::travel_spec::TravelPolicy,
+) -> Result<Itinerary> {
   // Extract JSON block from potentially noisy LLM output
   let json_str = extract_json_block(raw);
 
@@ -474,10 +573,10 @@ fn parse_itinerary_response(raw: &str, policy: &crate::travel_spec::TravelPolicy
       .as_str()
       .unwrap_or(&policy.trip.destination)
       .to_string(),
-    duration_days: v["duration_days"].as_u64().unwrap_or(policy.trip.duration_days as u64) as u32,
-    estimated_total_usd: v["estimated_total_usd"]
-      .as_f64()
-      .unwrap_or(0.0),
+    duration_days: v["duration_days"]
+      .as_u64()
+      .unwrap_or(policy.trip.duration_days as u64) as u32,
+    estimated_total_usd: v["estimated_total_usd"].as_f64().unwrap_or(0.0),
     reasoning: v["reasoning"]
       .as_str()
       .unwrap_or("Itinerary generated within budget constraints.")
@@ -554,7 +653,11 @@ fn fix_dates(itinerary: &mut Itinerary, policy: &crate::travel_spec::TravelPolic
 
   let shift = |s: &str| -> String {
     NaiveDate::parse_from_str(s, "%Y-%m-%d")
-      .map(|d| (d + chrono::Duration::days(offset_days)).format("%Y-%m-%d").to_string())
+      .map(|d| {
+        (d + chrono::Duration::days(offset_days))
+          .format("%Y-%m-%d")
+          .to_string()
+      })
       .unwrap_or_else(|_| s.to_string())
   };
 
@@ -598,23 +701,32 @@ fn segment_emoji(kind: &SegmentKind) -> &'static str {
 fn tracing_fallback(ctx: &ExecutionContext, agent: &str, err: &str) {
   ctx.log(ActivityLog::warn(
     agent,
-    &format!("0G Compute unavailable ({}), using fallback planner", err),
+    &format!("Qwen AI unavailable ({}), using fallback planner", err),
   ));
 }
 
 // ─── Demo Fallback ────────────────────────────────────────────────────────────
 
-fn demo_itinerary_json(destination: &str, city_name: &str, single_city: bool, dep_date: &str, days: u32, budget: f64) -> String {
+fn demo_itinerary_json(
+  destination: &str,
+  city_name: &str,
+  single_city: bool,
+  dep_date: &str,
+  days: u32,
+  budget: f64,
+) -> String {
   use chrono::NaiveDate;
   let base = NaiveDate::parse_from_str(dep_date, "%Y-%m-%d")
     .unwrap_or_else(|_| chrono::Local::now().date_naive());
   let date_of = |offset: i64| -> String {
-    (base + chrono::Duration::days(offset)).format("%Y-%m-%d").to_string()
+    (base + chrono::Duration::days(offset))
+      .format("%Y-%m-%d")
+      .to_string()
   };
 
   let flight_price = (budget * 0.35) as u64;
-  let hotel_night  = ((budget * 0.40) / days as f64) as u64;
-  let transport    = (budget * 0.15) as u64;
+  let hotel_night = ((budget * 0.40) / days as f64) as u64;
+  let transport = (budget * 0.15) as u64;
 
   let display_dest = if single_city { city_name } else { destination };
 
