@@ -41,8 +41,8 @@ use axum::{
   Json, Router,
 };
 use openworld::{
-  create_session, load_env, new_registry, run_session, ActivityLog,
-  Session, SessionRegistry, SessionState,
+  create_session, load_env, new_registry, run_session, ActivityLog, Session, SessionRegistry,
+  SessionState,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -265,8 +265,8 @@ async fn get_report_handler(
   let session = get_session(&state.sessions, id).await?;
   let artifact = session.artifact.lock().await.clone();
 
-  let artifact = artifact
-    .ok_or_else(|| anyhow::anyhow!("Report not yet available for session {}", id))?;
+  let artifact =
+    artifact.ok_or_else(|| anyhow::anyhow!("Report not yet available for session {}", id))?;
 
   let path = artifact
     .report_path
@@ -280,10 +280,13 @@ async fn get_report_handler(
       .header(header::CONTENT_TYPE, "text/markdown; charset=utf-8")
       .header(
         header::CONTENT_DISPOSITION,
-        format!("inline; filename=\"{}\"", std::path::Path::new(&path)
-          .file_name()
-          .and_then(|n| n.to_str())
-          .unwrap_or("report.md")),
+        format!(
+          "inline; filename=\"{}\"",
+          std::path::Path::new(&path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("report.md")
+        ),
       )
       .body(Body::from(content))
       .unwrap(),
@@ -336,16 +339,23 @@ async fn verify_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
   let session = get_session(&state.sessions, id).await?;
 
-  let artifact = session.artifact.lock().await.clone()
-    .ok_or_else(|| anyhow::anyhow!("No artifact yet for session {} — run to completion first", id))?;
+  let artifact = session.artifact.lock().await.clone().ok_or_else(|| {
+    anyhow::anyhow!(
+      "No artifact yet for session {} — run to completion first",
+      id
+    )
+  })?;
 
-  let stored_proof = artifact.execution_proof.clone()
+  let stored_proof = artifact
+    .execution_proof
+    .clone()
     .ok_or_else(|| anyhow::anyhow!("Artifact missing execution_proof field"))?;
 
   // Reconstruct the exact preimage used during signing:
   //   session_id | policy_constraint_json | booking_ref1,booking_ref2,...
   let bookings = session.bookings.lock().await.clone();
-  let booking_refs = bookings.iter()
+  let booking_refs = bookings
+    .iter()
     .map(|b| b.reference.as_str())
     .collect::<Vec<_>>()
     .join(",");
@@ -356,15 +366,15 @@ async fn verify_handler(
     booking_refs
   );
 
-  let operator_key = std::env::var("OPERATOR_SIGNING_KEY")
-    .unwrap_or_else(|_| "openworld-dev-key".to_string());
+  let operator_key =
+    std::env::var("OPERATOR_SIGNING_KEY").unwrap_or_else(|_| "openworld-dev-key".to_string());
 
   // Re-compute HMAC-SHA256
   use hmac::{Hmac, Mac};
   use sha2::Sha256;
   type HmacSha256 = Hmac<Sha256>;
-  let mut mac = HmacSha256::new_from_slice(operator_key.as_bytes())
-    .expect("HMAC accepts any key length");
+  let mut mac =
+    HmacSha256::new_from_slice(operator_key.as_bytes()).expect("HMAC accepts any key length");
   mac.update(preimage.as_bytes());
   let recomputed = hex::encode(mac.finalize().into_bytes());
 
@@ -396,10 +406,7 @@ async fn health() -> impl IntoResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async fn get_session(
-  registry: &SessionRegistry,
-  id: Uuid,
-) -> Result<Arc<Session>, AppError> {
+async fn get_session(registry: &SessionRegistry, id: Uuid) -> Result<Arc<Session>, AppError> {
   registry
     .read()
     .await
@@ -455,7 +462,10 @@ async fn main() {
     .with_state(state);
 
   let addr = format!("0.0.0.0:{}", port);
-  println!("\x1b[32m[OpenWorld]\x1b[0m  API server listening on http://{}", addr);
+  println!(
+    "\x1b[32m[OpenWorld]\x1b[0m  API server listening on http://{}",
+    addr
+  );
   println!("\x1b[2m  POST /sessions          — create session from travel.md\x1b[0m");
   println!("\x1b[2m  POST /sessions/:id/start — launch orchestration\x1b[0m");
   println!("\x1b[2m  GET  /sessions/:id/report — markdown travel report\x1b[0m");
