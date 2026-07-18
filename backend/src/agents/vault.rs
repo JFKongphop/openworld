@@ -1,10 +1,12 @@
 /*!
-VaultAgent — budget enforcement and payment authorisation.
+VaultAgent — budget enforcement, spend velocity monitoring, and human-in-the-loop gate.
 
 Responsibilities:
   - Enforces travel.md vault rules before any booking is executed
   - Tracks cumulative spend against budget_max
   - Rejects transactions that exceed max_single_transaction
+  - Monitors spend velocity: flags when >68% committed early in the trip
+  - Sets needs_approval flag when spend crosses the approval threshold (80%)
   - Logs every approval and rejection with remaining balance
 */
 
@@ -22,11 +24,20 @@ pub struct VaultState {
   pub budget_total: f64,
   pub spent: f64,
   pub transactions: Vec<VaultTransaction>,
+  /// Set to true when spend velocity or total crosses approval threshold.
+  /// Orchestrator checks this after run() to decide whether to pause.
+  pub needs_approval: bool,
+  pub approval_reason: Option<String>,
 }
 
 impl VaultState {
   pub fn remaining(&self) -> f64 {
     self.budget_total - self.spent
+  }
+
+  pub fn spent_pct(&self) -> f64 {
+    if self.budget_total <= 0.0 { return 0.0; }
+    self.spent / self.budget_total * 100.0
   }
 }
 
@@ -54,6 +65,8 @@ impl VaultAgent {
         budget_total: budget,
         spent: 0.0,
         transactions: Vec::new(),
+        needs_approval: false,
+        approval_reason: None,
       })),
     }
   }
@@ -76,10 +89,7 @@ impl Agent for VaultAgent {
 
     ctx.log(ActivityLog::action(
       self.name(),
-      &format!(
-        "Checking budget — total: {} USD",
-        ctx.policy.trip.budget_max as u64
-      ),
+      &format!("Checking budget — total: {} USD", ctx.policy.trip.budget_max as u64),
     ));
 
     let bookings = self.bookings.lock().await.clone();
@@ -88,6 +98,10 @@ impl Agent for VaultAgent {
     vault.budget_total = ctx.policy.trip.budget_max;
     vault.spent = 0.0;
     vault.transactions.clear();
+    vault.needs_approval = false;
+    vault.approval_reason = None;
+
+    let duration_days = ctx.policy.trip.duration_days.max(1) as f64;
 
     for booking in &bookings {
       if booking.status != BookingStatus::Confirmed {
@@ -124,9 +138,7 @@ impl Agent for VaultAgent {
           self.name(),
           &format!(
             "⚠ {} ({:.0} USD) would exceed budget — remaining: {:.0} USD",
-            booking.provider,
-            amount,
-            vault.remaining()
+            booking.provider, amount, vault.remaining()
           ),
         ));
         vault.transactions.push(VaultTransaction {
@@ -153,11 +165,44 @@ impl Agent for VaultAgent {
         self.name(),
         &format!(
           "✓ Payment approved — {} {:.0} USD  |  Remaining: {:.0} USD",
-          booking.provider,
-          amount,
-          vault.remaining()
+          booking.provider, amount, vault.remaining()
         ),
       ));
+    }
+
+    // ── Spend velocity monitoring ─────────────────────────────────────────────
+    let _daily_budget = vault.budget_total / duration_days;
+    let daily_remaining = vault.remaining() / duration_days;
+    let spent_pct = vault.spent_pct();
+
+    ctx.log(ActivityLog::info(
+      self.name(),
+      &format!(
+        "💰 Spend rate: {:.0}% of budget used  |  ${:.0}/day remaining  |  ${:.0} total remaining",
+        spent_pct, daily_remaining, vault.remaining()
+      ),
+    ));
+
+    // Warn if >68% committed (velocity flag — may blow budget before trip ends)
+    if spent_pct >= 68.0 && spent_pct < 80.0 {
+      ctx.log(ActivityLog::warn(
+        self.name(),
+        &format!(
+          "⚠ Spend velocity alert: {:.0}% of budget committed — ${:.0}/day remaining for {} days",
+          spent_pct, daily_remaining, duration_days as u32
+        ),
+      ));
+    }
+
+    // ── Human-in-the-loop gate (≥80% of budget) ───────────────────────────────
+    if spent_pct >= 80.0 {
+      let reason = format!(
+        "{:.0}% of budget committed ({:.0} / {:.0} USD) — human approval required before proceeding",
+        spent_pct, vault.spent, vault.budget_total
+      );
+      ctx.log(ActivityLog::warn(self.name(), &format!("🔐 Approval gate triggered: {}", reason)));
+      vault.needs_approval = true;
+      vault.approval_reason = Some(reason);
     }
 
     let approved_count = vault.transactions.iter().filter(|t| t.approved).count();
@@ -166,8 +211,8 @@ impl Agent for VaultAgent {
     ctx.log(ActivityLog::info(
       self.name(),
       &format!(
-        "Vault summary — approved: {}, rejected: {}, spent: {:.0} / {:.0} USD",
-        approved_count, rejected_count, vault.spent, vault.budget_total
+        "Vault summary — approved: {}, rejected: {}, spent: {:.0} / {:.0} USD ({:.0}%)",
+        approved_count, rejected_count, vault.spent, vault.budget_total, spent_pct
       ),
     ));
 

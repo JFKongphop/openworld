@@ -522,7 +522,7 @@ fn parse_transport(raw: &str, from: &str, to: &str) -> Option<Vec<TransportOptio
   if opts.is_empty() { None } else { Some(opts) }
 }
 
-// ─── Demo fallbacks (used only when 0G Compute is completely unavailable) ─────
+// ─── Demo fallbacks (used only when both SerpAPI and Qwen are unavailable) ────
 
 fn demo_flights(from: &str, to: &str) -> Vec<FlightOption> {
   let route = format!("{from} → {to}");
