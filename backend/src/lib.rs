@@ -13,15 +13,18 @@ pub mod agents;
 pub mod mapbox;
 pub mod memory_store;
 pub mod orchestrator;
+pub mod oss_store;
 pub mod qwen_client;
 pub mod report;
 pub mod serpapi;
 pub mod travel_spec;
 pub mod weather;
 
-pub use qwen_client::{build_qwen_client, QwenClient};
 pub use memory_store::{build_memory_store, MemoryStore};
-pub use orchestrator::{create_session, new_registry, run_session, Session, SessionRegistry, SessionState};
+pub use orchestrator::{
+  create_session, new_registry, run_session, Session, SessionRegistry, SessionState,
+};
+pub use qwen_client::{build_qwen_client, QwenClient};
 pub use travel_spec::{parse_travel_md, TravelPolicy};
 
 pub use agents::{
