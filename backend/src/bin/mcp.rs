@@ -50,7 +50,7 @@ struct McpState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  dotenv::dotenv().ok();
+  openworld::load_env(); // loads backend/.env regardless of CWD
 
   let state = McpState {
     registry: new_registry(),
