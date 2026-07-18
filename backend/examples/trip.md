@@ -2,11 +2,10 @@
 # Edit this file and run:  cargo run --bin travel -- examples/trip.md
 
 trip:
-  owner: "0x874604c87A1FEF538Ce21192aac0Db131F5F24ae"    # EVM wallet that will own the journey NFT — put YOUR address here
   origin: BKK                     # Departure city or IATA code
-  destination: TYO              # IATA city code (TYO, OSA, SIN, CDG, LHR…) or country name (Japan, France…)
-  departure_date: "2026-06-10"  # YYYY-MM-DD
-  return_date:    "2026-06-15"  # YYYY-MM-DD
+  destination: TYO                # IATA city code (TYO, OSA, SIN, CDG, LHR…) or country name
+  departure_date: "2026-08-01"  # YYYY-MM-DD
+  return_date:    "2026-08-06"  # YYYY-MM-DD
   budget_max: "1500 USD"        # Total trip budget
 
 flight:
@@ -20,7 +19,7 @@ flight:
 
 hotel:
   min_rating: 4.0               # Minimum star / review rating
-  max_price_per_night: "100 USD"
+  max_price_per_night: "150 USD"
   near_station: true            # Prefer hotels within walking distance of a station
 
 transport:
@@ -33,5 +32,4 @@ automation:
   allow_replanning: true        # Re-plan if budget is exceeded
 
 vault:
-  auto_payment: true            # Pay with on-chain vault automatically
-  max_single_transaction: "500 USD"   # Safety cap per transaction
+  max_single_transaction: "800 USD"   # Safety cap per transaction

@@ -21,9 +21,21 @@ path = "src/bin/travel.rs"
 name = "report"
 path = "src/bin/report.rs"
 
+[[bin]]
+name = "mcp"
+path = "src/bin/mcp.rs"
+
+[[bin]]
+name = "oss_test"
+path = "src/bin/oss_test.rs"
+
+[[bin]]
+name = "oss_fetch"
+path = "src/bin/oss_fetch.rs"
+
 [dependencies]
 tokio          = { version = "1",    features = ["full"] }
-reqwest        = { version = "0.11", features = ["json"] }
+reqwest        = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 serde          = { version = "1",    features = ["derive"] }
 serde_json     = "1"
 serde_yaml     = "0.9"
@@ -40,4 +52,7 @@ tokio-stream   = "0.1"
 md5            = "0.7"
 hmac           = "0.12"
 sha2           = "0.10"
+hex            = "0.4"
 urlencoding    = "2"
+sha1           = "0.10"
+base64         = "0.21"
