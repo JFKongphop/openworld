@@ -468,6 +468,7 @@ fn parse_flights(raw: &str, from: &str, to: &str) -> Option<Vec<FlightOption>> {
       duration,
       price_usd: price,
       booking_url: None,
+      seats_remaining: None,
     })
   }).collect();
   if opts.is_empty() { None } else { Some(opts) }
@@ -526,11 +527,11 @@ fn parse_transport(raw: &str, from: &str, to: &str) -> Option<Vec<TransportOptio
 fn demo_flights(from: &str, to: &str) -> Vec<FlightOption> {
   let route = format!("{from} → {to}");
   vec![
-    FlightOption { airline: "ANA".into(),               route: route.clone(), departure: "09:00".into(), arrival: "15:30".into(), stops: 0, duration: "6h30m".into(), price_usd: 420.0, booking_url: None },
-    FlightOption { airline: "JAL".into(),               route: route.clone(), departure: "11:00".into(), arrival: "17:30".into(), stops: 0, duration: "6h30m".into(), price_usd: 395.0, booking_url: None },
-    FlightOption { airline: "Thai Airways".into(),      route: route.clone(), departure: "08:30".into(), arrival: "17:00".into(), stops: 1, duration: "8h30m".into(), price_usd: 340.0, booking_url: None },
-    FlightOption { airline: "Singapore Airlines".into(),route: route.clone(), departure: "14:00".into(), arrival: "23:00".into(), stops: 1, duration: "9h00m".into(), price_usd: 380.0, booking_url: None },
-    FlightOption { airline: "Scoot".into(),             route: route.clone(), departure: "07:00".into(), arrival: "15:30".into(), stops: 1, duration: "8h30m".into(), price_usd: 280.0, booking_url: None },
+    FlightOption { airline: "ANA".into(),               route: route.clone(), departure: "09:00".into(), arrival: "15:30".into(), stops: 0, duration: "6h30m".into(), price_usd: 420.0, booking_url: None, seats_remaining: None },
+    FlightOption { airline: "JAL".into(),               route: route.clone(), departure: "11:00".into(), arrival: "17:30".into(), stops: 0, duration: "6h30m".into(), price_usd: 395.0, booking_url: None, seats_remaining: None },
+    FlightOption { airline: "Thai Airways".into(),      route: route.clone(), departure: "08:30".into(), arrival: "17:00".into(), stops: 1, duration: "8h30m".into(), price_usd: 340.0, booking_url: None, seats_remaining: None },
+    FlightOption { airline: "Singapore Airlines".into(),route: route.clone(), departure: "14:00".into(), arrival: "23:00".into(), stops: 1, duration: "9h00m".into(), price_usd: 380.0, booking_url: None, seats_remaining: None },
+    FlightOption { airline: "Scoot".into(),             route: route.clone(), departure: "07:00".into(), arrival: "15:30".into(), stops: 1, duration: "8h30m".into(), price_usd: 280.0, booking_url: None, seats_remaining: None },
   ]
 }
 
