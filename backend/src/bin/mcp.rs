@@ -30,16 +30,13 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use uuid::Uuid;
 
 use openworld::{
-  agents::{
-    planner::PlannerAgent,
-    ExecutionContext,
-  },
-  build_qwen_client,
-  create_session, new_registry, run_session,
-  SessionRegistry, SessionState,
-  weather::build_weather,
-  serpapi::build_serpapi,
+  agents::{planner::PlannerAgent, ExecutionContext},
+  build_qwen_client, create_session, new_registry,
   report::generate_travel_report,
+  run_session,
+  serpapi::build_serpapi,
+  weather::build_weather,
+  SessionRegistry, SessionState,
 };
 
 // ─── Shared MCP state ─────────────────────────────────────────────────────────
@@ -55,20 +52,26 @@ struct McpState {
 async fn main() -> Result<()> {
   dotenv::dotenv().ok();
 
-  let state = McpState { registry: new_registry() };
+  let state = McpState {
+    registry: new_registry(),
+  };
 
-  let stdin  = tokio::io::stdin();
+  let stdin = tokio::io::stdin();
   let mut stdout = tokio::io::stdout();
   let mut reader = BufReader::new(stdin);
-  let mut line   = String::new();
+  let mut line = String::new();
 
   loop {
     line.clear();
     let n = reader.read_line(&mut line).await?;
-    if n == 0 { break; }
+    if n == 0 {
+      break;
+    }
 
     let trimmed = line.trim();
-    if trimmed.is_empty() { continue; }
+    if trimmed.is_empty() {
+      continue;
+    }
 
     let request: Value = match serde_json::from_str(trimmed) {
       Ok(v) => v,
@@ -93,25 +96,28 @@ async fn main() -> Result<()> {
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 async fn handle_request(req: Value, state: &McpState) -> Value {
-  let id     = req["id"].clone();
+  let id = req["id"].clone();
   let method = req["method"].as_str().unwrap_or("");
   let params = req.get("params").cloned().unwrap_or(json!({}));
 
   match method {
-    "initialize"      => rpc_ok(id, json!({
-      "protocolVersion": "2024-11-05",
-      "serverInfo": { "name": "openworld", "version": "0.1.0" },
-      "capabilities": {
-        "tools": {},
-        "resources": { "subscribe": false, "listChanged": false }
-      }
-    })),
-    "tools/list"      => rpc_ok(id, json!({ "tools": tools_list() })),
-    "tools/call"      => tools_call(id, params, state).await,
-    "resources/list"  => rpc_ok(id, json!({ "resources": resources_list() })),
-    "resources/read"  => resources_read(id, params, state).await,
-    "ping"            => rpc_ok(id, json!({})),
-    _                 => rpc_error(id, -32601, "Method not found"),
+    "initialize" => rpc_ok(
+      id,
+      json!({
+        "protocolVersion": "2024-11-05",
+        "serverInfo": { "name": "openworld", "version": "0.1.0" },
+        "capabilities": {
+          "tools": {},
+          "resources": { "subscribe": false, "listChanged": false }
+        }
+      }),
+    ),
+    "tools/list" => rpc_ok(id, json!({ "tools": tools_list() })),
+    "tools/call" => tools_call(id, params, state).await,
+    "resources/list" => rpc_ok(id, json!({ "resources": resources_list() })),
+    "resources/read" => resources_read(id, params, state).await,
+    "ping" => rpc_ok(id, json!({})),
+    _ => rpc_error(id, -32601, "Method not found"),
   }
 }
 
@@ -282,19 +288,22 @@ async fn tools_call(id: Value, params: Value, state: &McpState) -> Value {
   let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
   let result = match name {
-    "openworld_plan_trip"       => tool_plan_trip(&args, state).await,
-    "openworld_search_flights"  => tool_search_flights(&args).await,
-    "openworld_search_hotels"   => tool_search_hotels(&args).await,
-    "openworld_get_weather"     => tool_get_weather(&args).await,
-    "openworld_check_visa"      => tool_check_visa(&args).await,
-    "openworld_run_pipeline"    => tool_run_pipeline(&args, state).await,
-    "openworld_get_session"     => tool_get_session(&args, state).await,
+    "openworld_plan_trip" => tool_plan_trip(&args, state).await,
+    "openworld_search_flights" => tool_search_flights(&args).await,
+    "openworld_search_hotels" => tool_search_hotels(&args).await,
+    "openworld_get_weather" => tool_get_weather(&args).await,
+    "openworld_check_visa" => tool_check_visa(&args).await,
+    "openworld_run_pipeline" => tool_run_pipeline(&args, state).await,
+    "openworld_get_session" => tool_get_session(&args, state).await,
     "openworld_approve_session" => tool_approve_session(&args, state).await,
-    "openworld_get_report"      => tool_get_report(&args, state).await,
+    "openworld_get_report" => tool_get_report(&args, state).await,
     _ => return rpc_error(id, -32601, &format!("Unknown tool: {name}")),
   };
 
-  rpc_ok(id, json!({ "content": [{ "type": "text", "text": result }] }))
+  rpc_ok(
+    id,
+    json!({ "content": [{ "type": "text", "text": result }] }),
+  )
 }
 
 // ─── Tool: plan_trip ──────────────────────────────────────────────────────────
@@ -311,14 +320,22 @@ async fn tool_plan_trip(args: &Value, state: &McpState) -> String {
   };
 
   let session_id = session.session_id;
-  state.registry.write().await.insert(session_id, session.clone());
+  state
+    .registry
+    .write()
+    .await
+    .insert(session_id, session.clone());
 
   let compute = match build_qwen_client() {
     Ok(c) => c,
     Err(e) => return err_text(&format!("Qwen unavailable: {e}")),
   };
 
-  let ctx = ExecutionContext { session_id, policy: session.policy.clone(), log_tx: session.log_tx.clone() };
+  let ctx = ExecutionContext {
+    session_id,
+    policy: session.policy.clone(),
+    log_tx: session.log_tx.clone(),
+  };
 
   let planner = PlannerAgent::new(compute, session.itinerary.clone());
   if let Err(e) = openworld::agents::Agent::run(&planner, &ctx).await {
@@ -331,7 +348,8 @@ async fn tool_plan_trip(args: &Value, state: &McpState) -> String {
       "session_id": session_id.to_string(),
       "status": "planned",
       "itinerary": i
-    })).unwrap_or_default(),
+    }))
+    .unwrap_or_default(),
     None => err_text("PlannerAgent returned no itinerary"),
   }
 }
@@ -340,8 +358,8 @@ async fn tool_plan_trip(args: &Value, state: &McpState) -> String {
 
 async fn tool_search_flights(args: &Value) -> String {
   let origin = args["origin"].as_str().unwrap_or("");
-  let dest   = args["destination"].as_str().unwrap_or("");
-  let date   = args["date"].as_str().unwrap_or("");
+  let dest = args["destination"].as_str().unwrap_or("");
+  let date = args["date"].as_str().unwrap_or("");
 
   if origin.is_empty() || dest.is_empty() || date.is_empty() {
     return err_text("origin, destination, date are all required");
@@ -355,7 +373,8 @@ async fn tool_search_flights(args: &Value) -> String {
           "route": format!("{origin} → {dest}"),
           "date": date,
           "flights": flights
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
       }
       _ => {}
     }
@@ -367,10 +386,10 @@ async fn tool_search_flights(args: &Value) -> String {
 // ─── Tool: search_hotels ──────────────────────────────────────────────────────
 
 async fn tool_search_hotels(args: &Value) -> String {
-  let city         = args["city"].as_str().unwrap_or("");
-  let checkin      = args["checkin"].as_str().unwrap_or("");
-  let checkout     = args["checkout"].as_str().unwrap_or("");
-  let min_rating   = args["min_rating"].as_f64().unwrap_or(3.5);
+  let city = args["city"].as_str().unwrap_or("");
+  let checkin = args["checkin"].as_str().unwrap_or("");
+  let checkout = args["checkout"].as_str().unwrap_or("");
+  let min_rating = args["min_rating"].as_f64().unwrap_or(3.5);
   let max_per_night = args["max_per_night"].as_f64().unwrap_or(200.0);
 
   if city.is_empty() || checkin.is_empty() || checkout.is_empty() {
@@ -378,7 +397,10 @@ async fn tool_search_hotels(args: &Value) -> String {
   }
 
   if let Some(api) = build_serpapi().ok() {
-    match api.search_hotels(city, checkin, checkout, min_rating, max_per_night).await {
+    match api
+      .search_hotels(city, checkin, checkout, min_rating, max_per_night)
+      .await
+    {
       Ok(hotels) if !hotels.is_empty() => {
         return serde_json::to_string_pretty(&json!({
           "source": "SerpAPI (Google Hotels)",
@@ -386,7 +408,8 @@ async fn tool_search_hotels(args: &Value) -> String {
           "checkin": checkin,
           "checkout": checkout,
           "hotels": hotels
-        })).unwrap_or_default();
+        }))
+        .unwrap_or_default();
       }
       _ => {}
     }
@@ -398,9 +421,9 @@ async fn tool_search_hotels(args: &Value) -> String {
 // ─── Tool: get_weather ────────────────────────────────────────────────────────
 
 async fn tool_get_weather(args: &Value) -> String {
-  let city       = args["city"].as_str().unwrap_or("");
+  let city = args["city"].as_str().unwrap_or("");
   let start_date = args["start_date"].as_str().unwrap_or("");
-  let end_date   = args["end_date"].as_str().unwrap_or("");
+  let end_date = args["end_date"].as_str().unwrap_or("");
 
   if city.is_empty() || start_date.is_empty() || end_date.is_empty() {
     return err_text("city, start_date, end_date are all required");
@@ -412,7 +435,8 @@ async fn tool_get_weather(args: &Value) -> String {
       "city": city,
       "period": format!("{start_date} to {end_date}"),
       "forecast": forecast
-    })).unwrap_or_default(),
+    }))
+    .unwrap_or_default(),
     Err(e) => err_text(&format!("Weather forecast failed: {e}")),
   }
 }
@@ -422,7 +446,7 @@ async fn tool_get_weather(args: &Value) -> String {
 async fn tool_check_visa(args: &Value) -> String {
   let nationality = args["nationality"].as_str().unwrap_or("");
   let destination = args["destination"].as_str().unwrap_or("");
-  let purpose     = args["purpose"].as_str().unwrap_or("tourism");
+  let purpose = args["purpose"].as_str().unwrap_or("tourism");
 
   if nationality.is_empty() || destination.is_empty() {
     return err_text("nationality and destination are required");
@@ -471,8 +495,8 @@ Reply with ONLY a valid JSON object — no markdown, no prose:
     Ok(mut v) => {
       v["nationality"] = json!(nationality);
       v["destination"] = json!(destination);
-      v["purpose"]     = json!(purpose);
-      v["powered_by"]  = json!("Qwen (Alibaba Cloud Model Studio)");
+      v["purpose"] = json!(purpose);
+      v["powered_by"] = json!("Qwen (Alibaba Cloud Model Studio)");
       serde_json::to_string_pretty(&v).unwrap_or(raw)
     }
     Err(_) => raw,
@@ -493,7 +517,11 @@ async fn tool_run_pipeline(args: &Value, state: &McpState) -> String {
   };
 
   let session_id = session.session_id;
-  state.registry.write().await.insert(session_id, session.clone());
+  state
+    .registry
+    .write()
+    .await
+    .insert(session_id, session.clone());
 
   // Spawn full pipeline — runs in background, caller polls with get_session
   run_session(session);
@@ -519,16 +547,16 @@ async fn tool_get_session(args: &Value, state: &McpState) -> String {
   };
 
   let registry = state.registry.read().await;
-  let session  = match registry.get(&id) {
+  let session = match registry.get(&id) {
     Some(s) => s.clone(),
     None => return err_text("Session not found"),
   };
   drop(registry);
 
-  let state_val  = session.current_state().await;
-  let logs       = session.logs.lock().await.clone();
-  let itinerary  = session.itinerary.lock().await.clone();
-  let bookings   = session.bookings.lock().await.clone();
+  let state_val = session.current_state().await;
+  let logs = session.logs.lock().await.clone();
+  let itinerary = session.itinerary.lock().await.clone();
+  let bookings = session.bookings.lock().await.clone();
 
   // Return last 20 log lines to keep response compact
   let recent_logs: Vec<_> = logs.iter().rev().take(20).collect();
@@ -542,7 +570,8 @@ async fn tool_get_session(args: &Value, state: &McpState) -> String {
     "itinerary":    itinerary,
     "bookings":     bookings,
     "recent_logs":  recent_logs
-  })).unwrap_or_default()
+  }))
+  .unwrap_or_default()
 }
 
 // ─── Tool: approve_session ────────────────────────────────────────────────────
@@ -560,7 +589,7 @@ async fn tool_approve_session(args: &Value, state: &McpState) -> String {
   };
 
   let registry = state.registry.read().await;
-  let session  = match registry.get(&id) {
+  let session = match registry.get(&id) {
     Some(s) => s.clone(),
     None => return err_text("Session not found"),
   };
@@ -568,7 +597,9 @@ async fn tool_approve_session(args: &Value, state: &McpState) -> String {
 
   let current_state = session.current_state().await;
   if current_state != SessionState::AwaitingApproval {
-    return err_text(&format!("Session is in state {current_state:?}, not AwaitingApproval"));
+    return err_text(&format!(
+      "Session is in state {current_state:?}, not AwaitingApproval"
+    ));
   }
 
   let sent = session.approve(approved).await;
@@ -584,7 +615,8 @@ async fn tool_approve_session(args: &Value, state: &McpState) -> String {
     } else {
       "Pipeline cancelled — session will transition to Failed"
     }
-  })).unwrap_or_default()
+  }))
+  .unwrap_or_default()
 }
 
 // ─── Tool: get_report ────────────────────────────────────────────────────────
@@ -600,7 +632,7 @@ async fn tool_get_report(args: &Value, state: &McpState) -> String {
   };
 
   let registry = state.registry.read().await;
-  let session  = match registry.get(&id) {
+  let session = match registry.get(&id) {
     Some(s) => s.clone(),
     None => return err_text("Session not found"),
   };
@@ -608,11 +640,13 @@ async fn tool_get_report(args: &Value, state: &McpState) -> String {
 
   let current_state = session.current_state().await;
   if current_state != SessionState::Complete {
-    return err_text(&format!("Session is {current_state:?} — report only available when Complete"));
+    return err_text(&format!(
+      "Session is {current_state:?} — report only available when Complete"
+    ));
   }
 
   let itinerary = session.itinerary.lock().await.clone();
-  let bookings  = session.bookings.lock().await.clone();
+  let bookings = session.bookings.lock().await.clone();
   let _artifact = session.artifact.lock().await.clone();
 
   match itinerary {
@@ -620,13 +654,13 @@ async fn tool_get_report(args: &Value, state: &McpState) -> String {
       &session.policy,
       &Some(itin),
       &bookings,
-      "",    // artifact_id
+      "", // artifact_id
       &session.session_id.to_string(),
-      "",    // logs hash
-      None,  // storage_root_hash
-      None,  // report_root_hash
-      None,  // on_chain_tx
-      None,  // travel_tips
+      "",   // logs hash
+      None, // storage_root_hash
+      None, // report_root_hash
+      None, // on_chain_tx
+      None, // travel_tips
     ),
     None => err_text("No itinerary available — cannot generate report"),
   }
@@ -650,9 +684,12 @@ async fn resources_read(id: Value, params: Value, state: &McpState) -> Value {
     return rpc_error(id, -32602, &format!("Unknown resource URI: {uri}"));
   };
 
-  rpc_ok(id, json!({
-    "contents": [{ "uri": uri, "text": content }]
-  }))
+  rpc_ok(
+    id,
+    json!({
+      "contents": [{ "uri": uri, "text": content }]
+    }),
+  )
 }
 
 async fn resource_sessions(state: &McpState) -> String {

@@ -27,62 +27,70 @@ Examples:
 use openworld::{
   create_session, load_env, parse_travel_md, run_session, ActivityLog, LogType, SessionState,
 };
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::broadcast;
 
 // ─── ANSI colours ─────────────────────────────────────────────────────────────
 
-const RESET:   &str = "\x1b[0m";
-const BOLD:    &str = "\x1b[1m";
-const DIM:     &str = "\x1b[2m";
-const RED:     &str = "\x1b[31m";
-const GREEN:   &str = "\x1b[32m";
-const YELLOW:  &str = "\x1b[33m";
-const BLUE:    &str = "\x1b[34m";
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const RED: &str = "\x1b[31m";
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const BLUE: &str = "\x1b[34m";
 const MAGENTA: &str = "\x1b[35m";
-const CYAN:    &str = "\x1b[36m";
+const CYAN: &str = "\x1b[36m";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 fn agent_colour(agent: &str) -> &'static str {
   match agent {
-    "PlannerAgent"     => MAGENTA,
-    "SearchAgent"      => CYAN,
+    "PlannerAgent" => MAGENTA,
+    "SearchAgent" => CYAN,
     "ReservationAgent" => YELLOW,
-    "RecoveryAgent"    => RED,
-    "VaultAgent"       => GREEN,
-    "ArtifactAgent"    => BLUE,
-    _                  => DIM,
+    "RecoveryAgent" => RED,
+    "VaultAgent" => GREEN,
+    "ArtifactAgent" => BLUE,
+    _ => DIM,
   }
 }
 
 fn log_icon(kind: &LogType) -> &'static str {
   match kind {
-    LogType::Info    => "·",
+    LogType::Info => "·",
     LogType::Success => "✓",
     LogType::Warning => "⚠",
-    LogType::Error   => "✗",
-    LogType::Action  => "▶",
+    LogType::Error => "✗",
+    LogType::Action => "▶",
   }
 }
 
 fn print_log(log: &ActivityLog) {
   let colour = agent_colour(&log.agent);
-  let icon   = log_icon(&log.log_type);
+  let icon = log_icon(&log.log_type);
   println!(
     "  {DIM}{ts}{RESET}  {icon}  {colour}{agent:<18}{RESET}  {msg}",
-    DIM    = DIM,
-    RESET  = RESET,
-    ts     = log.timestamp,
-    icon   = icon,
+    DIM = DIM,
+    RESET = RESET,
+    ts = log.timestamp,
+    icon = icon,
     colour = colour,
-    agent  = log.agent,
-    msg    = log.message,
+    agent = log.agent,
+    msg = log.message,
   );
 }
 
-fn build_travel_md(origin: &str, destination: &str, from_date: &str, to_date: &str, days: u32, budget: u32) -> String {
+fn build_travel_md(
+  origin: &str,
+  destination: &str,
+  from_date: &str,
+  to_date: &str,
+  days: u32,
+  budget: u32,
+) -> String {
   let per_night = (budget / days / 3).max(50);
-  let max_tx    = (budget / 3).max(100);
+  let max_tx = (budget / 3).max(100);
   format!(
     "trip:\n\
      \x20 origin: {origin}\n\
@@ -123,7 +131,9 @@ fn today_iso() -> String {
 fn add_days(date_iso: &str, days: i64) -> String {
   use chrono::NaiveDate;
   if let Ok(d) = NaiveDate::parse_from_str(date_iso, "%Y-%m-%d") {
-    (d + chrono::Duration::days(days)).format("%Y-%m-%d").to_string()
+    (d + chrono::Duration::days(days))
+      .format("%Y-%m-%d")
+      .to_string()
   } else {
     date_iso.to_string()
   }
@@ -153,8 +163,9 @@ async fn main() {
 
   // ── Detect file mode: first arg is a .md / .yaml / .yml file ──────────────
   let first = args.get(1).map(String::as_str).unwrap_or("");
-  let is_file_mode = (first.ends_with(".md") || first.ends_with(".yaml") || first.ends_with(".yml"))
-    && std::path::Path::new(first).exists();
+  let is_file_mode =
+    (first.ends_with(".md") || first.ends_with(".yaml") || first.ends_with(".yml"))
+      && std::path::Path::new(first).exists();
 
   let travel_md: String;
   let (origin, destination, from_date, to_date, days, budget);
@@ -177,16 +188,32 @@ async fn main() {
       }
     };
     let today = today_iso();
-    origin      = policy.trip.origin.clone();
+    origin = policy.trip.origin.clone();
     destination = policy.trip.destination.clone();
-    from_date   = if policy.trip.departure_date.is_empty() { today.clone() } else { policy.trip.departure_date.clone() };
-    to_date     = if policy.trip.return_date.is_empty() { add_days(&from_date, policy.trip.duration_days as i64) } else { policy.trip.return_date.clone() };
-    days        = policy.trip.duration_days;
-    budget      = policy.trip.budget_max as u32;
+    from_date = if policy.trip.departure_date.is_empty() {
+      today.clone()
+    } else {
+      policy.trip.departure_date.clone()
+    };
+    to_date = if policy.trip.return_date.is_empty() {
+      add_days(&from_date, policy.trip.duration_days as i64)
+    } else {
+      policy.trip.return_date.clone()
+    };
+    days = policy.trip.duration_days;
+    budget = policy.trip.budget_max as u32;
   } else {
     // ── Positional arg mode (existing behaviour) ───────────────────────────
-    let o = args.get(1).map(String::as_str).unwrap_or("Bangkok").to_string();
-    let d = args.get(2).map(String::as_str).unwrap_or("Tokyo").to_string();
+    let o = args
+      .get(1)
+      .map(String::as_str)
+      .unwrap_or("Bangkok")
+      .to_string();
+    let d = args
+      .get(2)
+      .map(String::as_str)
+      .unwrap_or("Tokyo")
+      .to_string();
 
     // Three supported forms:
     //   A) <days> <budget>                           — departs today
@@ -209,20 +236,28 @@ async fn main() {
       let b: u32 = a5.parse().unwrap_or(1200);
       (dep.clone(), add_days(&dep, dy as i64), dy, b)
     } else {
-      let dep = if is_date(a3) { a3.to_string() } else { today.clone() };
-      let ret = if is_date(a4) { a4.to_string() } else { add_days(&dep, 5) };
+      let dep = if is_date(a3) {
+        a3.to_string()
+      } else {
+        today.clone()
+      };
+      let ret = if is_date(a4) {
+        a4.to_string()
+      } else {
+        add_days(&dep, 5)
+      };
       let b: u32 = a5.parse().unwrap_or(1200);
       let dy = days_between(&dep, &ret);
       (dep, ret, dy, b)
     };
 
-    origin      = o;
+    origin = o;
     destination = d;
-    from_date   = fd;
-    to_date     = td;
-    days        = dy;
-    budget      = bg;
-    travel_md   = build_travel_md(&origin, &destination, &from_date, &to_date, days, budget);
+    from_date = fd;
+    to_date = td;
+    days = dy;
+    budget = bg;
+    travel_md = build_travel_md(&origin, &destination, &from_date, &to_date, days, budget);
   }
 
   // ── Banner ─────────────────────────────────────────────────────────────────
@@ -274,8 +309,32 @@ async fn main() {
       }
     }
 
-    // Stop when session reaches a terminal state
+    // Handle HITL approval gate
     let state = session.current_state().await;
+    if state == SessionState::AwaitingApproval {
+      println!();
+      println!("  {YELLOW}{BOLD}⏸  Human-in-the-loop approval required{RESET}");
+      println!("  {DIM}Budget commitment exceeds threshold. Approve to continue.{RESET}");
+      print!("  {BOLD}Approve? [Y/n]: {RESET}");
+      use std::io::Write;
+      let _ = std::io::stdout().flush();
+
+      let stdin = tokio::io::stdin();
+      let mut reader = BufReader::new(stdin);
+      let mut line = String::new();
+      let _ = reader.read_line(&mut line).await;
+      let approved = !line.trim().eq_ignore_ascii_case("n");
+
+      if approved {
+        println!("  {GREEN}✓ Approved — continuing pipeline{RESET}");
+      } else {
+        println!("  {RED}✗ Rejected — aborting{RESET}");
+      }
+      println!();
+      session.approve(approved).await;
+    }
+
+    // Stop when session reaches a terminal state
     if state == SessionState::Complete || state == SessionState::Failed {
       break;
     }
@@ -305,13 +364,21 @@ async fn main() {
     println!("  ────────────────────────────────────");
     println!("  Destination   {BOLD}{}{RESET}", art.destination);
     println!("  Duration      {} days", art.duration_days);
-    println!("  Total Spent   {GREEN}{BOLD}${:.2} USD{RESET}", art.total_spent_usd);
-    println!("  Budget Left   ${:.2} USD",
-      budget as f64 - art.total_spent_usd);
+    println!(
+      "  Total Spent   {GREEN}{BOLD}${:.2} USD{RESET}",
+      art.total_spent_usd
+    );
+    println!(
+      "  Budget Left   ${:.2} USD",
+      budget as f64 - art.total_spent_usd
+    );
     println!("  Bookings      {} confirmed", art.bookings.len());
     println!("  Artifact ID   {DIM}{}{RESET}", art.artifact_id);
     if let Some(root) = &art.storage_root_hash {
-      println!("  Exec Proof    {CYAN}{}{RESET}", &root[..root.len().min(32)]);
+      println!(
+        "  Exec Proof    {CYAN}{}{RESET}",
+        &root[..root.len().min(32)]
+      );
     }
 
     if let Some(path) = &art.report_path {
@@ -319,8 +386,6 @@ async fn main() {
       println!("  {BOLD}Report saved:{RESET}");
       println!("  {DIM}{path}{RESET}");
       println!();
-
-
     }
   } else {
     println!("  {GREEN}{BOLD}✓ Session complete{RESET}  {DIM}(no artifact){RESET}");
