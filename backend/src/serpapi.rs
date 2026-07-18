@@ -49,6 +49,9 @@ struct FlightGroup {
   price: Option<f64>,
   #[serde(default)]
   layovers: Vec<serde_json::Value>,
+  /// Strings like "2 seats left at this price", "Often delayed by 34+ min"
+  #[serde(default)]
+  extensions: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -160,6 +163,7 @@ fn flight_group_to_option(g: &FlightGroup, origin: &str, dest: &str) -> Option<F
   };
 
   let stops = g.layovers.len() as u32;
+  let seats_remaining = parse_seats_from_extensions(&g.extensions);
 
   Some(FlightOption {
     airline,
@@ -170,7 +174,22 @@ fn flight_group_to_option(g: &FlightGroup, origin: &str, dest: &str) -> Option<F
     duration,
     price_usd: price,
     booking_url: None,
+    seats_remaining,
   })
+}
+
+/// Extracts seat count from SerpAPI extension strings like "2 seats left at this price".
+fn parse_seats_from_extensions(extensions: &[String]) -> Option<u32> {
+  for ext in extensions {
+    let lower = ext.to_lowercase();
+    if lower.contains("seat") && lower.contains("left") {
+      // Extract the leading number, e.g. "2 seats left at this price" → 2
+      if let Some(n) = lower.split_whitespace().next().and_then(|w| w.parse::<u32>().ok()) {
+        return Some(n);
+      }
+    }
+  }
+  None
 }
 
 // ─── Google Hotels ────────────────────────────────────────────────────────────
