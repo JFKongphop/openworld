@@ -182,6 +182,10 @@ Rules:
 
     let itinerary = parse_itinerary_response(&raw, &ctx.policy)?;
 
+    // ── Two-pass self-critique ────────────────────────────────────────────────
+    ctx.log(ActivityLog::action(self.name(), "Qwen self-critique pass — reviewing draft itinerary..."));
+    let itinerary = self.critique_and_revise(itinerary, &raw, ctx).await;
+
     ctx.log(ActivityLog::success(
       self.name(),
       &format!(
@@ -240,7 +244,104 @@ Rules:
   }
 }
 
-// ─── Mapbox + Weather validation ──────────────────────────────────────────────
+// ─── Two-pass self-critique ───────────────────────────────────────────────────
+
+impl PlannerAgent {
+  /// Pass the draft itinerary back to Qwen for self-critique,
+  /// then generate a revised version incorporating the feedback.
+  /// Falls back to the original if revision fails or isn't materially better.
+  async fn critique_and_revise(
+    &self,
+    draft: Itinerary,
+    draft_raw: &str,
+    ctx: &ExecutionContext,
+  ) -> Itinerary {
+    let budget    = ctx.policy.trip.budget_max;
+    let origin    = &ctx.policy.trip.origin;
+    let dest      = ctx.policy.resolved_city_name().to_string();
+    let dep_date  = &ctx.policy.trip.departure_date;
+    let ret_date  = &ctx.policy.trip.return_date;
+
+    // Turn 1: critique the draft
+    let critique_prompt = format!(
+      r#"You are a senior travel planner reviewing a draft itinerary.
+
+Budget: {budget} USD  |  From: {origin}  |  To: {dest}  |  {dep_date} → {ret_date}
+
+DRAFT ITINERARY (JSON):
+{draft_raw}
+
+Review this itinerary critically. Identify exactly 3 specific improvements:
+1. A budget/cost concern (over-spending, unrealistic price, missed saving)
+2. A logistics concern (unrealistic travel time, scheduling conflict, missing segment)
+3. An experience concern (missed must-see, poor hotel location, bad activity order)
+
+Output ONLY a JSON object with this structure — no markdown, no explanation:
+{{"issue_1":"...","fix_1":"...","issue_2":"...","fix_2":"...","issue_3":"...","fix_3":"..."}}"#
+    );
+
+    let critique = match self.compute.infer_with_system(
+      "You are a meticulous travel planning critic. Find real problems, not minor nitpicks.",
+      &critique_prompt,
+      Some(512),
+    ).await {
+      Ok(c) => c,
+      Err(_) => {
+        ctx.log(ActivityLog::warn(self.name(), "Critique pass skipped (Qwen unavailable)"));
+        return draft;
+      }
+    };
+
+    // Extract critique text for logging
+    let critique_preview = critique.chars().take(200).collect::<String>();
+    ctx.log(ActivityLog::info(self.name(), &format!("Critique: {}", critique_preview)));
+
+    // Turn 2: revise with the critique in context
+    let revise_prompt = format!(
+      r#"You are revising a travel itinerary based on a critic's feedback.
+
+Original constraints:
+  Budget: {budget} USD  |  From: {origin}  |  To: {dest}  |  {dep_date} → {ret_date}
+
+Critic's feedback:
+{critique}
+
+Original draft:
+{draft_raw}
+
+Apply the critic's fixes. Output ONLY a revised JSON itinerary with the same structure as the draft.
+Preserve all fields. Keep dates strictly between {dep_date} and {ret_date}.
+No markdown, no explanation — just the JSON object."#
+    );
+
+    let revised_raw = match self.compute.infer(&revise_prompt).await {
+      Ok(r) => r,
+      Err(_) => {
+        ctx.log(ActivityLog::warn(self.name(), "Revision pass failed — keeping draft"));
+        return draft;
+      }
+    };
+
+    match parse_itinerary_response(&revised_raw, &ctx.policy) {
+      Ok(revised) => {
+        ctx.log(ActivityLog::success(
+          self.name(),
+          &format!(
+            "✓ Revised itinerary — {} segments, est. {:.0} USD (draft was {:.0} USD)",
+            revised.segments.len(),
+            revised.estimated_total_usd,
+            draft.estimated_total_usd,
+          ),
+        ));
+        revised
+      }
+      Err(_) => {
+        ctx.log(ActivityLog::warn(self.name(), "Revision parse failed — keeping draft"));
+        draft
+      }
+    }
+  }
+}
 
 impl PlannerAgent {
   /// Validate each day's activities for:
