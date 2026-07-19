@@ -162,11 +162,19 @@ async fn orchestrate(session: Arc<Session>) -> Result<()> {
     log_tx: session.log_tx.clone(),
   };
 
-  // Wire log fan-out → session.logs (persistent) AND broadcast
+  // Wire log fan-out → session.logs (persistent) AND broadcast AND stderr
   let logs_store = session.logs.clone();
   let mut log_rx = session.subscribe();
   tokio::spawn(async move {
     while let Ok(entry) = log_rx.recv().await {
+      let icon = match entry.log_type {
+        crate::agents::LogType::Success => "✓",
+        crate::agents::LogType::Warning => "⚠",
+        crate::agents::LogType::Error   => "✗",
+        crate::agents::LogType::Action  => "▶",
+        crate::agents::LogType::Info    => "·",
+      };
+      eprintln!("  {}  {}  {:<20} {}", entry.timestamp, icon, entry.agent, entry.message);
       logs_store.lock().await.push(entry);
     }
   });
