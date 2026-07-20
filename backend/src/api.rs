@@ -438,7 +438,7 @@ async fn main() {
     .or_else(|_| std::env::var("PORT"))
     .unwrap_or_else(|_| "3000".to_string())
     .parse()
-    .unwrap_or(9000);
+    .unwrap_or(3000);
 
   let state = AppState {
     sessions: new_registry(),
