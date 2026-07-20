@@ -1,39 +1,40 @@
 // ── Mock data for realtime simulation ─────────────────────────────────────
 
-export const MOCK_TRIP_MD = `trip:
-  owner: "0x874604c87A1FEF538Ce21192aac0Db131F5F24ae"
-  origin: BKK
-  destination: TYO
-  departure_date: "2026-06-10"
-  return_date: "2026-06-15"
-  budget_max: "1500 USD"
+export const MOCK_TRIP_MD = `# OpenWorld Trip File
+# Edit this file and click Run to launch the AI agents
+
+trip:
+  origin: BKK                     
+  destination: TYO                
+  departure_date: "2026-08-01"    
+  return_date:    "2026-08-06"    
+  budget_max: "1500 USD"          
 
 flight:
-  max_stops: 1
-  avoid_red_eye: true
-  preferred_airlines:
+  max_stops: 1                    
+  avoid_red_eye: true             
+  preferred_airlines:             
     - ANA
     - JAL
     - Singapore Airlines
     - Emirates
 
 hotel:
-  min_rating: 4.0
-  max_price_per_night: "100 USD"
-  near_station: true
+  min_rating: 4.0                 
+  max_price_per_night: "150 USD"
+  near_station: true              
 
 transport:
-  prefer_train: true
+  prefer_train: true              
   avoid_overnight_bus: true
 
 automation:
-  auto_reserve: true
-  retry_on_failure: true
-  allow_replanning: true
+  auto_reserve: true              
+  retry_on_failure: true          
+  allow_replanning: true          
 
 vault:
-  auto_payment: true
-  max_single_transaction: "500 USD"
+  max_single_transaction: "800 USD"   
 `
 
 export type AgentName =
@@ -65,18 +66,16 @@ export const INITIAL_ACTIVITY: ActivityEvent[] = [
 export const STREAMING_EVENTS: Omit<ActivityEvent, 'id' | 'timestamp'>[] = [
   { agent: 'ReservationAgent', message: 'Booking ANA NH908 — seat 23A confirmed', status: 'success' },
   { agent: 'ReservationAgent', message: 'Hotel reservation submitted — conf #HTR-88291', status: 'success' },
-  { agent: 'VaultAgent', message: 'Vault balance check — 1.42 ETH available', status: 'info' },
+  { agent: 'VaultAgent', message: 'Budget check — $1500 USD available', status: 'info' },
   { agent: 'VaultAgent', message: 'Payment approved — $612 USD flight', status: 'success' },
   { agent: 'VaultAgent', message: 'Payment approved — $490 USD hotel (5 nights)', status: 'success' },
   { agent: 'SearchAgent', message: 'Day activities search — Tokyo highlights', status: 'running' },
   { agent: 'SearchAgent', message: 'Shinjuku Gyoen, TeamLab, Tsukiji market added', status: 'success' },
   { agent: 'ArtifactAgent', message: 'Generating markdown travel report...', status: 'running' },
   { agent: 'ArtifactAgent', message: 'Report generated — 2,847 words', status: 'success' },
-  { agent: 'ArtifactAgent', message: 'Uploading to 0G Storage...', status: 'running' },
-  { agent: 'ArtifactAgent', message: 'Uploaded — root hash 0x5feb...587f', status: 'success' },
-  { agent: 'ArtifactAgent', message: 'Minting ERC-7857 on 0G Galileo testnet...', status: 'running' },
-  { agent: 'ArtifactAgent', message: 'NFT minted — tokenId #1 — tx 0xcc68...d82', status: 'success' },
-  { agent: 'System', message: 'Journey complete — all segments confirmed on-chain', status: 'success' },
+  { agent: 'ArtifactAgent', message: 'Saving artifact to local store...', status: 'running' },
+  { agent: 'ArtifactAgent', message: 'Uploaded to cloud storage — artifact saved', status: 'success' },
+  { agent: 'System', message: 'Journey complete — all segments confirmed', status: 'success' },
 ]
 
 export interface RootHash {
@@ -131,9 +130,8 @@ export interface JourneyArtifact {
   origin: string
   dates: string
   totalSpent: string
-  tokenId: number
-  txHash: string
-  reportHash: string
+  artifactId: string
+  reportUrl: string
   sessionId: string
   segments: number
 }
@@ -145,9 +143,8 @@ export const JOURNEY_ARTIFACTS: JourneyArtifact[] = [
     origin: 'Bangkok',
     dates: 'Jun 10 – Jun 15, 2026',
     totalSpent: '$985 USD',
-    tokenId: 1,
-    txHash: '0xcc682576d3206bf6a7a3000f0cd59b2ef200f75a9fbf4b46f4fa05f6ded18d82',
-    reportHash: '0x5febd814d8e4c5a7d058da967deb26f6118c2faa656e82a11abd2f37f319587f',
+    artifactId: '449cc38a',
+    reportUrl: 'https://qwenhackkongphop.oss-ap-southeast-7.aliyuncs.com/reports/trip-report-tokyo-jun2026.md',
     sessionId: '449cc38a-36bd-4d00-ae6a-ccfd9bbf81a7',
     segments: 7,
   },
