@@ -1,66 +1,69 @@
-# OpenWorld — Autonomous AI Travel Operations
+# OpenWorld — Autonomous AI Workflow Execution
 
-> **8 AI agents. Zero manual steps. Real flights, real hotels, real decisions.**
+> **8 AI agents. Zero manual steps. Real decisions. End-to-end autonomous execution.**
 
-OpenWorld is a fully autonomous travel orchestration system powered by **Qwen AI (Alibaba Cloud)**. Write a `trip.md` policy file — a pipeline of specialized AI agents handles planning, search, budget enforcement, reservations, failure recovery, and final report generation — end to end, without human intervention (except an optional approval gate before payment).
+> 🏁 **Submitted to: [Global AI Hackathon Series with Qwen Cloud](https://qwencloud-hackathon.devpost.com/) — Track 4: Autopilot Agent**
+
+OpenWorld is a production-ready autonomous workflow execution system powered by **Qwen AI (Alibaba Cloud)**. Define a workflow policy in `trip.md` — a pipeline of specialized AI agents handles planning, search, budget enforcement, reservations, failure recovery, and report generation — end to end, without human intervention except at critical approval gates.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](./LICENSE)
-[![Built with Qwen](https://img.shields.io/badge/Powered%20by-Qwen%20AI-orange)](https://dashscope-intl.aliyuncs.com)
+[![Powered by Qwen](https://img.shields.io/badge/Powered%20by-Qwen%20AI-orange)](https://dashscope-intl.aliyuncs.com)
 [![Deployed on Alibaba Cloud](https://img.shields.io/badge/Deployed%20on-Alibaba%20Cloud-orange)](https://www.alibabacloud.com)
 
 ---
 
-## Demo
+## Live Demo
 
-[![OpenWorld Demo](https://img.youtube.com/vi/A2_0xyCH6Ls/maxresdefault.jpg)](https://youtu.be/A2_0xyCH6Ls)
+[![OpenWorld Demo](./screen.png)](https://youtu.be/p7wIblj8hJg)
 
 | | |
 |---|---|
-| **Live Frontend** | [openworld-frontend.vercel.app](https://openworld-frontend.vercel.app) |
-| **Live API** | `https://qwenhack-rdypqsjofu.us-west-1.fcapp.run/health` |
-| **Track** | AI Agents & Automation |
+| **Frontend** | [openworld-alpha.vercel.app](https://openworld-alpha.vercel.app) |
+| **API** | `https://qwenhack-rdypqsjofu.us-west-1.fcapp.run/health` |
+| **Track** | Track 4 — Autopilot Agent |
 
 ---
 
-## Problems We Solve
+## Why OpenWorld?
 
-### 1. Travel Planning Takes 4–8 Hours of Manual Work
+Unlike traditional AI travel planners that generate suggestions, OpenWorld **executes complete workflows autonomously**.
 
-Booking an international trip requires juggling 6+ platforms — flights, hotels, transport, currency conversion, itinerary coordination, and budget tracking. Each step is manual, error-prone, and disconnected.
+- Understands ambiguous travel requests expressed as YAML policy
+- Invokes external APIs (flights, hotels, maps) and synthesises results with Qwen AI
+- Requests human approval before committing critical spend
+- Recovers automatically from failures with Qwen-powered replanning
+- Persists session memory and streams all activity logs to Alibaba SLS in real time
 
-With OpenWorld:
-- A single `trip.md` policy file replaces all input forms
-- AI agents research, rank, and book automatically
-- Budget constraints are enforced at every step — no overspending
+The reader should understand within the first minute: **OpenWorld is an autonomous AI workflow system that happens to automate travel**.
 
-### 2. Failures Have No Recovery
+---
 
-When a flight is full or a hotel is unavailable, users start over from scratch. There is no automated fallback — every failure costs hours of replanning.
+## Screenshots
 
-With OpenWorld:
-- `RecoveryAgent` detects every failure automatically
-- Re-prompts Qwen with failure context to generate a different strategy (different airline, hotel tier, or route)
-- Pipeline continues without user intervention
+| | |
+|---|---|
+| **Landing Page** | Agent showcase + hero section |
+| **Workflow Policy Editor** | Monaco editor with `trip.md` syntax, live run button |
+| **Agent Pipeline** | Real-time animated node graph showing each agent state |
+| **Live Workflow Execution** | Activity feed streaming structured logs per agent |
+| **Final Report** | AI-generated Markdown report with cost tables and itinerary |
 
-### 3. No Visibility Into What AI Is Doing
+> See the [demo video](https://youtu.be/A2_0xyCH6Ls) for a live walkthrough of all five screens.
 
-Most AI travel tools are black boxes — you submit a request and wait for a result. If something goes wrong, you don't know where or why.
+---
 
-With OpenWorld:
-- Every agent emits structured logs streamed to the frontend in real time
-- `PipelineGraph` component shows exactly which agent is running, completed, or failed
-- Full activity feed with timestamps and agent names
-- All logs persisted to **Alibaba SLS** for audit and debugging
+## Features
 
-### 4. Critical Spend Decisions Are Made Without Human Input
-
-Autonomous systems that commit real spend without a human checkpoint are a trust barrier for adoption.
-
-With OpenWorld:
-- `VaultAgent` pauses the pipeline before any reservation is made
-- Frontend renders an `ApprovalGate` showing exact budget breakdown
-- Human approves or rejects via a single click — pipeline resumes or cancels
-- Implemented as a `tokio::sync::oneshot` channel mid-pipeline pause, not a polling workaround
+| Feature | Status |
+|---------|--------|
+| Multi-Agent Orchestration | ✅ |
+| Human Approval Gate | ✅ |
+| Failure Recovery | ✅ |
+| Persistent Memory | ✅ |
+| Live Execution Graph | ✅ |
+| Real Flight & Hotel Search | ✅ |
+| Qwen AI Reasoning | ✅ |
+| Alibaba Cloud Deployment | ✅ |
 
 ---
 
@@ -68,42 +71,41 @@ With OpenWorld:
 
 | Service | Usage | Code Reference |
 |---|---|---|
-| **Qwen AI** (`qwen3.7-max`) | Powers all 8 agents — planning, search synthesis, recovery, report generation | [`src/og_compute.rs`](./backend/src/og_compute.rs) |
-| **OSS** (Object Storage) | Stores final Markdown travel reports per session | [`src/agents/artifact.rs`](./backend/src/agents/artifact.rs) |
+| **Qwen AI** (`qwen3.7-max`) | Powers all agents — planning, search synthesis, recovery, report generation | [`src/og_compute.rs`](./backend/src/og_compute.rs) |
+| **OSS** (Object Storage) | Stores final Markdown workflow reports per session | [`src/agents/artifact.rs`](./backend/src/agents/artifact.rs) |
 | **SLS** (Log Service) | Streams all agent activity logs to cloud logstore in real time | [`src/orchestrator.rs`](./backend/src/orchestrator.rs) |
 | **Function Compute** | Hosts the Rust API as a serverless `linux/amd64` container | [`Dockerfile`](./backend/Dockerfile) |
 
 ---
 
-## Architecture
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     FRONTEND (React + Vite)                      │
-│  TripEditor (Monaco) → useSession hook → REST polling 1.5s       │
-│  PipelineGraph · ActivityFeed · ApprovalGate · TripResult        │
+│                     FRONTEND (React + Vite)                     │
+│  Policy Editor (Monaco) → useSession hook → REST polling 1.5s   │
+│  PipelineGraph · ActivityFeed · ApprovalGate · WorkflowResult   │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ HTTPS
                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           BACKEND — Rust / Axum (Alibaba Function Compute)       │
-│                                                                   │
-│  ┌─────────┐  ┌────────┐  ┌──────────┐  ┌────────────────────┐ │
-│  │ Intent  │→ │Planner │→ │  Search  │→ │   Reservation      │ │
-│  │ Parser  │  │ Agent  │  │  Agent   │  │   Agent            │ │
-│  └─────────┘  └────────┘  └──────────┘  └─────────┬──────────┘ │
-│                                                     │            │
-│  ┌──────────┐  ┌──────────┐  ┌─────────┐           │            │
-│  │ Artifact │← │ Recovery │← │  Vault  │←──────────┘            │
-│  │  Agent   │  │  Agent   │  │  Agent  │  ← approval gate        │
-│  └────┬─────┘  └──────────┘  └─────────┘                        │
-│       │                                                           │
-└───────┼───────────────────────────────────────────────────────── ┘
+┌────────────────────────────────────────────────────────────────┐
+│           BACKEND — Rust / Axum (Alibaba Function Compute)     │
+│                                                                │
+│  ┌────────┐  ┌────────┐  ┌──────────┐  ┌────────────────────┐  │
+│  │ Intent │→ │Planner │→ │  Search  │→ │   Reservation      │  │
+│  └────────┘  └────────┘  └──────────┘  └─────────┬──────────┘  │
+│                                                  │             │
+│  ┌────────┐  ┌──────────┐  ┌──────────┐          │             │
+│  │ Report │← │ Recovery │← │ Approval │←─────────┘             │
+│  │ Agent  │  │  Agent   │  │  Agent   │  ← human gate          │
+│  └────┬───┘  └──────────┘  └──────────┘                        │
+│       │                                                        │
+└───────┼────────────────────────────────────────────────────────┘
         │                    │                    │
         ▼                    ▼                    ▼
 ┌─────────────┐    ┌──────────────────┐  ┌─────────────────────┐
 │  Qwen AI    │    │   Alibaba OSS    │  │   Alibaba SLS       │
-│ qwen3.7-max │    │  (report store)  │  │  (activity logs)    │
+│ qwen3.7-max │    │ (report storage) │  │  (activity logs)    │
 └─────────────┘    └──────────────────┘  └─────────────────────┘
 ```
 
@@ -113,58 +115,135 @@ With OpenWorld:
 
 | Step | Agent | Role |
 |---|---|---|
-| 00 | **Intent** | Parses `trip.md` YAML into structured constraints and budget rules |
-| 01 | **Planner** | Generates a day-by-day itinerary using Qwen AI |
-| 02 | **Search** | Finds real flights, hotels, and transport via SerpAPI + Mapbox |
-| 03 | **Reservation** | Selects optimal options and secures bookings |
-| 04 | **Vault** | Enforces budget policy — pauses pipeline for human approval if over threshold |
-| 05 | **Recovery** | Auto-retries failed bookings with alternative strategies |
-| 06 | **Memory** | Persists session context and agent state across the pipeline |
-| 07 | **Artifact** | Generates Markdown report, uploads to OSS, signs with HMAC-SHA256 proof |
+| 00 | **System** | Initialises session, loads workflow policy, validates constraints |
+| 01 | **Intent** | Parses `trip.md` YAML into structured machine-executable constraints |
+| 02 | **Planner** | Generates a day-by-day itinerary using Qwen AI reasoning |
+| 03 | **Search** | Finds real flights, hotels, and transport via SerpAPI + Mapbox |
+| 04 | **Approval** | Enforces budget policy — pauses workflow for human approval if threshold exceeded |
+| 05 | **Reservation** | Selects optimal options and confirms bookings |
+| 06 | **Recovery** | Auto-retries failed bookings with Qwen-powered alternative strategies |
+| 07 | **Memory** | Persists session context and agent state across the full pipeline |
+| 08 | **Report** | Generates Markdown report, uploads to Alibaba OSS, signs with HMAC proof |
+
+Session state machine: `created → planning → searching → verifying_budget → awaiting_approval → reserving → recovering → finalising → complete`
 
 ---
 
-## Pipeline Flow
+## External Tools
 
-```
-User writes trip.md
-       │
-       ▼
-POST /sessions  ──► create session (UUID)
-       │
-       ▼
-POST /sessions/:id/start  ──► tokio::spawn(run_session)
-       │
-       ├─► PlannerAgent    ──► Qwen prompt → JSON itinerary
-       │
-       ├─► SearchAgent     ──► SerpAPI flights + hotels → Qwen ranking
-       │
-       ├─► VaultAgent      ──► budget check
-       │       │
-       │       └─ over threshold? ──► oneshot::channel pause
-       │               │                    │
-       │               │            frontend ApprovalGate
-       │               │                    │
-       │               └──── approve ────────┘
-       │
-       ├─► ReservationAgent ──► select + confirm bookings
-       │
-       ├─► RecoveryAgent    ──► retry failed items via Qwen replanning
-       │
-       └─► ArtifactAgent    ──► Qwen writes report → OSS upload → HMAC sign
-                │
-                ▼
-        GET /sessions/:id/report  ──► Markdown report from OSS
-```
+| Tool | Purpose |
+|------|---------|
+| Qwen AI (`qwen3.7-max`) | Agent reasoning, ranking, replanning, report writing |
+| SerpAPI | Real flight and hotel search |
+| Mapbox | Location data and mapping |
+| Alibaba OSS | Workflow report storage |
+| Alibaba SLS | Real-time activity log streaming |
+| Alibaba FC | Serverless container execution |
 
 ---
 
-## Key Code: Qwen Integration
+## API Usage by Agent
 
-Each agent calls Qwen with domain-specific prompts. Example — `PlannerAgent`:
+Each agent calls a specific combination of APIs. No agent is a black box — every external call is typed and auditable.
+
+| Agent | Qwen AI | SerpAPI | Mapbox | OSS | SLS |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Intent | — | — | — | — | ✅ |
+| Planner | ✅ `infer()` | — | — | — | ✅ |
+| Search | ✅ `think_then_answer()` | ✅ Flights + Hotels | ✅ Geocoding | — | ✅ |
+| Approval | — | — | — | — | ✅ |
+| Reservation | ✅ `infer()` | — | — | — | ✅ |
+| Recovery | ✅ `infer()` re-prompt | — | — | — | ✅ |
+| Memory | — | — | — | — | ✅ |
+| Report | ✅ `infer()` | — | — | ✅ Upload | ✅ |
+
+### Qwen API — How It's Called
+
+OpenWorld uses Qwen's **OpenAI-compatible** endpoint with two calling patterns:
+
+**1. Single-turn inference** (`infer`) — used by Planner, Reservation, Recovery, Report:
+```rust
+// qwen_client.rs — system prompt is fixed across all agents
+pub async fn infer(&self, prompt: &str) -> Result<String> {
+    self.infer_with_system(
+        "You are an autonomous travel planning agent. \
+         Output structured JSON when asked. Be concise and deterministic.",
+        prompt,
+        Some(4096),
+    ).await
+}
+// → POST https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions
+//   { model: "qwen3.7-max", messages: [...], max_tokens: 4096, enable_thinking: false }
+```
+
+**2. Two-turn ReAct-style reasoning** (`think_then_answer`) — used by SearchAgent:
+```rust
+// Turn 1: model reasons freely about flight/hotel options (scratchpad, 512 tokens)
+// Turn 2: model's own reasoning fed back as context → outputs final ranked JSON
+pub async fn think_then_answer(&self, system, think_prompt, answer_prompt, max_tokens)
+```
+This produces higher-quality ranked results than a single-turn call — the model reasons before committing to specific flights and prices.
+
+### SerpAPI — Real Inventory, Not Hallucinated Prices
+
+```
+GET https://serpapi.com/search.json
+  ?engine=google_flights
+  &departure_id=BKK
+  &arrival_id=TYO
+  &outbound_date=2026-08-01
+  &return_date=2026-08-06
+  &currency=USD
+
+GET https://serpapi.com/search.json
+  ?engine=google_hotels
+  &q=hotels+in+Tokyo
+  &check_in_date=2026-08-01
+  &check_out_date=2026-08-06
+  &min_price=0&max_price=120
+```
+
+Raw results are passed to Qwen's `think_then_answer` for ranking and selection — replacing hallucinated prices with real inventory.
+
+---
+
+
+## Problems We Solve
+
+### 1. Multi-Step Workflows Require Manual Coordination
+
+Executing an international trip requires 4–8 hours of manual work across 6+ platforms. Each step is disconnected, error-prone, and requires human judgment at every stage.
+
+With OpenWorld: a single `trip.md` policy file replaces all input. AI agents execute each step, hand off typed outputs, and enforce constraints automatically.
+
+### 2. AI Systems Have No Recovery From Failure
+
+When a booking fails, traditional systems stop and report an error. Users restart from scratch.
+
+With OpenWorld: `RecoveryAgent` detects every failure, re-prompts Qwen with failure context, and generates a fundamentally different strategy — different airline, hotel tier, or route — without user intervention.
+
+### 3. Autonomous Systems Cannot Be Trusted With Critical Spend
+
+AI systems that commit real spend without human oversight are a fundamental trust and adoption barrier.
+
+With OpenWorld: `ApprovalAgent` pauses the pipeline via a `tokio::sync::oneshot` channel before any reservation is committed. The frontend renders a full budget breakdown. A single human click resumes or cancels the workflow.
+
+### 4. No Visibility Into What the AI Is Doing
+
+Most AI workflow tools are black boxes — you submit a request and wait.
+
+With OpenWorld: every agent emits structured logs streamed to the frontend in real time. `PipelineGraph` shows exactly which agent is running, completed, or failed, derived from live log analysis.
+
+---
+
+## Implementation Highlights
+
+### Qwen Multi-Agent Prompting
+
+Each agent uses a domain-specific Qwen prompt strategy — not a single prompt:
 
 ```rust
-// backend/src/agents/planner.rs
+// PlannerAgent — structured JSON itinerary from YAML policy
 let prompt = format!(
     "You are a travel planner. Given this policy:\n{}\n\
      Generate a structured day-by-day itinerary as JSON with: \
@@ -172,16 +251,7 @@ let prompt = format!(
     serde_yaml::to_string(&session.policy)?
 );
 
-let response = qwen_chat(&[
-    Message { role: "system", content: "You are an expert travel planner." },
-    Message { role: "user",   content: &prompt },
-]).await?;
-```
-
-`RecoveryAgent` re-prompts with failure context:
-
-```rust
-// backend/src/agents/recovery.rs
+// RecoveryAgent — re-prompts with failure context for a different strategy
 let recovery_prompt = format!(
     "Previous booking attempt failed: {}\n\
      Original plan: {}\n\
@@ -191,145 +261,60 @@ let recovery_prompt = format!(
 );
 ```
 
----
+### Human-in-the-Loop Approval Gate
 
-## Key Code: Approval Gate (Human-in-the-Loop)
-
-The pipeline pauses mid-execution using a `oneshot` channel:
+The pipeline pauses mid-execution using a `oneshot` channel — not polling:
 
 ```rust
-// backend/src/agents/vault.rs
+// ApprovalAgent pauses the pipeline
 let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
 session.set_approval_channel(tx).await;
 session.set_state(SessionState::AwaitingApproval).await;
 
-// Pipeline suspends here — waiting for HTTP POST /approve or /reject
 let approved = rx.await.unwrap_or(false);
-
 if !approved {
     session.set_state(SessionState::Failed).await;
-    return Err(anyhow!("Budget rejected by operator"));
+    return Err(anyhow!("Workflow rejected by operator"));
 }
 ```
 
 ```rust
-// backend/src/api.rs — POST /sessions/:id/approve
+// POST /sessions/:id/approve — resumes pipeline
 async fn approve_handler(...) {
-    let sent = session.approve(true).await;  // sends true through oneshot
-    // pipeline resumes from where it paused
+    session.approve(true).await;  // sends through oneshot, pipeline continues
 }
 ```
 
----
+### Async Rust Orchestration
 
-## Key Code: HMAC Execution Proof
-
-Every completed artifact is signed to prove tamper-free execution:
+The full pipeline runs as a `tokio::spawn` task with `broadcast` channels for real-time log streaming to multiple subscribers simultaneously:
 
 ```rust
-// backend/src/agents/artifact.rs
-let preimage = format!(
-    "{}|{}|{}",
-    session.session_id,
-    session.policy.to_constraint_json(),
-    booking_refs.join(",")
-);
-
-let mut mac = HmacSha256::new_from_slice(operator_key.as_bytes())?;
-mac.update(preimage.as_bytes());
-let proof = hex::encode(mac.finalize().into_bytes());
-```
-
-Verify at any time: `GET /sessions/:id/verify`
-
----
-
-## Live API
-
-The backend is live on Alibaba Function Compute:
-
-```bash
-# Health check
-curl https://qwenhack-rdypqsjofu.us-west-1.fcapp.run/health
-# → {"status":"ok","service":"OpenWorld Agentic Travel API","version":"0.1.0"}
-
-# Create a session
-curl -X POST https://qwenhack-rdypqsjofu.us-west-1.fcapp.run/sessions \
-  -H "Content-Type: application/json" \
-  -d '{"travel_md": "trip:\n  origin: BKK\n  destination: TYO\n  budget_max: \"1500 USD\"\n  departure_date: \"2026-08-01\"\n  return_date: \"2026-08-06\""}'
-
-# Start pipeline
-curl -X POST https://qwenhack-rdypqsjofu.us-west-1.fcapp.run/sessions/<id>/start
-
-# Stream logs
-curl https://qwenhack-rdypqsjofu.us-west-1.fcapp.run/sessions/<id>/logs
+run_session(session.clone());  // non-blocking, fires and polls via GET /sessions/:id/logs
 ```
 
 ---
 
-## Technical Depth & Engineering
+## Why OpenWorld Is Different
 
-OpenWorld makes deep, non-trivial use of **Qwen AI (qwen3.7-max)** throughout the pipeline — not just a single prompt, but a multi-agent system where each agent has a distinct Qwen prompt strategy:
+OpenWorld treats **AI agents as stateful typed pipeline stages**, not one-shot chatbots:
 
-- **PlannerAgent** sends structured system + user prompts to Qwen to produce a JSON itinerary from a YAML policy — with budget constraints embedded in the prompt context
-- **SearchAgent** synthesises Qwen reasoning over raw SerpAPI results (flights, hotels) to rank and select the best options
-- **RecoveryAgent** re-prompts Qwen with failure context and previous attempt data to generate an alternative strategy
-- **ArtifactAgent** uses Qwen to write a rich GFM Markdown travel report with cost tables, day-by-day schedule, and booking summaries
-
-Engineering innovations:
-- **Async Rust state machine** — `SessionState` enum drives the full pipeline via `tokio::spawn`, with `broadcast` channels for real-time log streaming to multiple subscribers
-- **HMAC-SHA256 execution proof** — every artifact is cryptographically signed over `session_id | policy_constraints | booking_refs` to prove tamper-free execution
-- **Mid-pipeline approval gate** — `tokio::sync::oneshot` channel pauses execution awaiting a human HTTP decision, then resumes exactly where it stopped
-- **Serverless container on FC** — `linux/amd64` Docker container on Alibaba Function Compute, cold-started on demand with 300s timeout
+- Each agent receives structured context (policy + previous agent outputs) and produces typed Rust structs consumed by the next stage — a **typed AI pipeline**
+- The **Intent Agent** separates intent parsing from execution — downstream agents never parse free text
+- The **ApprovalAgent** is a first-class architectural primitive, not a UI workaround — a mid-pipeline channel pause with full budget context surfaced to the decision UI
+- The **PipelineGraph** frontend component derives each node's state from live log stream analysis rather than explicit state events — resilient to partial failures
+- All logs are persisted to **Alibaba SLS** — every workflow execution is fully auditable
 
 ---
 
-## Innovation & AI Creativity
+## Workflow Policy
 
-The architecture treats **AI agents as stateful typed pipeline stages**, not one-shot chatbots:
-
-- Each agent receives structured context (policy + previous agent outputs) and produces typed output consumed by the next stage — a **typed AI pipeline** rather than a chat loop
-- The **Intent Agent** translates human-readable YAML policy into machine-executable constraints that every downstream agent respects — separating intent from execution
-- **RecoveryAgent** implements a novel retry strategy: instead of replaying the same failed action, it re-prompts Qwen with the failure reason and asks for a fundamentally different approach
-- The **approval gate** is a first-class architectural primitive — not a UI afterthought — a mid-pipeline pause with exact budget breakdown surfaced to the human decision UI
-- The frontend **PipelineGraph** derives each node's state from live log stream analysis rather than explicit state events — resilient to partial failures
-
-Tech stack: Rust + Axum (async, zero-cost abstractions), React 18 + Framer Motion (real-time animated pipeline), Monaco Editor (in-browser YAML), react-markdown + remark-gfm (AI report rendering).
-
----
-
-## Problem Value & Impact
-
-**The problem:** Planning and booking a multi-day international trip requires 4–8 hours of manual research across 6+ platforms — flights, hotels, transport, budget tracking, itinerary coordination.
-
-**OpenWorld's solution:** A single `trip.md` file replaces all of that:
-1. Understands your constraints (budget, preferences, dates) as **policy — not a chat message**
-2. Executes against real travel APIs with AI-powered selection
-3. Recovers from failures automatically without user intervention
-4. Asks for human approval only at the critical payment decision point
-5. Delivers a complete formatted travel report stored in Alibaba OSS
-
-**Real-world relevance:** This architecture mirrors enterprise travel management systems (Concur, TripActions) but built as open-source, API-driven infrastructure. The policy-as-code (`trip.md`) approach is programmable — companies could define corporate travel policies as YAML and have every employee booking automatically enforce them.
-
-**Scalability potential:** The agent pipeline is stateless per session and runs on serverless FC — horizontal scaling is automatic. The `trip.md` policy format is extensible to any domain requiring policy-driven multi-step AI orchestration (expense management, procurement, event planning).
-
----
-
-## Presentation & Documentation
-
-- **Demo Video** — [YouTube 3-minute walkthrough](https://youtu.be/A2_0xyCH6Ls) showing the full pipeline from `trip.md` to final AI report
-- **Live Frontend** — [openworld-frontend.vercel.app](https://openworld-frontend.vercel.app) — interactive trip editor with real-time pipeline graph
-- **Live API** — `https://qwenhack-rdypqsjofu.us-west-1.fcapp.run` — Alibaba FC deployed backend, health-checked and running
-- **Architecture** — ASCII diagram above + component-level breakdown in Project Structure
-
----
-
-## The `trip.md` Format
+Define your workflow as code in `trip.md`:
 
 ```yaml
 trip:
   origin: BKK                    # IATA departure code
-  destination: TYO               # IATA destination code
+  destination: TYO               # IATA destination
   departure_date: "2026-08-01"
   return_date:    "2026-08-06"
   budget_max: "1500 USD"
@@ -346,7 +331,7 @@ hotel:
 
 vault:
   auto_payment: true
-  max_single_transaction: "800 USD"  # triggers approval gate if exceeded
+  max_single_transaction: "800 USD"  # triggers ApprovalAgent gate if exceeded
 ```
 
 ---
@@ -368,19 +353,19 @@ openworld/
 │   │   ├── og_compute.rs       # Qwen AI client
 │   │   ├── og_storage.rs       # Alibaba OSS client
 │   │   ├── orchestrator.rs     # Session state machine + SLS logging
-│   │   └── travel_spec.rs      # trip.md YAML parser
+│   │   └── travel_spec.rs      # Workflow policy YAML parser
 │   ├── Dockerfile              # linux/amd64 for Alibaba FC
-│   └── examples/trip.md        # Example trip policy
+│   └── examples/trip.md        # Example workflow policy
 ├── frontend/                   # React 18 + TypeScript + Vite
 │   └── src/
-│       ├── hooks/useSession.ts     # API polling + state
+│       ├── hooks/useSession.ts     # API polling + state management
 │       └── components/
 │           ├── PipelineGraph.tsx   # Live agent pipeline visualisation
-│           ├── AgentShowcase.tsx   # 8-agent showcase section
-│           ├── ApprovalGate.tsx    # Human-in-the-loop UI
+│           ├── AgentShowcase.tsx   # 9-agent showcase section
+│           ├── ApprovalGate.tsx    # Human-in-the-loop decision UI
 │           ├── TripResult.tsx      # AI report renderer (react-markdown)
 │           ├── ActivityFeed.tsx    # Real-time log stream
-│           └── TripEditor.tsx      # Monaco editor for trip.md
+│           └── TripEditor.tsx      # Monaco editor for workflow policy
 └── README.md
 ```
 
@@ -391,16 +376,16 @@ openworld/
 ```bash
 # Backend
 cd backend
-cp .env.example .env      # fill in API keys
-cargo run --bin api        # http://localhost:3000
+cp .env.example .env        # fill in API keys
+cargo run --bin api          # http://localhost:3000
 
 # Frontend
 cd frontend
 pnpm install
 echo "VITE_API_URL=http://localhost:3000" > .env.local
-pnpm dev                   # http://localhost:5173
+pnpm dev                     # http://localhost:5173
 
-# CLI (no frontend needed)
+# CLI — run a workflow without the frontend
 cd backend
 cargo run --bin travel -- examples/trip.md
 ```
@@ -413,7 +398,7 @@ cargo run --bin travel -- examples/trip.md
 |---|---|
 | `QWEN_API_KEY` | Alibaba Cloud Model Studio API key |
 | `QWEN_ENDPOINT` | Qwen chat completions URL |
-| `QWEN_MODEL` | Model name (`qwen3.7-max`) |
+| `QWEN_MODEL` | Model name (e.g. `qwen3.7-max`) |
 | `SERPAPI_KEY` | SerpAPI key for flight/hotel search |
 | `MAPBOX_ACCESS_TOKEN` | Mapbox token for location data |
 | `OSS_ACCESS_KEY_ID` | Alibaba Cloud OSS access key |
@@ -436,13 +421,26 @@ cd backend
 docker buildx build --platform linux/amd64 \
   -t jfkongphop/openworld-api:latest --push .
 
-# Redeploy on FC: Console → Edit Function → Deploy
+# Redeploy: Alibaba FC Console → Edit Function → Deploy
 ```
 
-FC settings: Custom Container · `./api` · Port `3000` · Timeout `300s`
+FC settings: Custom Container · Startup `./api` · Port `3000` · Timeout `300s`
 
 ---
 
 ## License
 
 MIT © 2026 OpenWorld — see [LICENSE](./LICENSE)
+
+Built an autonomous AI travel agent in Rust + Qwen AI.
+
+Write a trip.md policy → 9 AI agents handle everything:
+planning → flight search → budget gate → booking → failure recovery → report
+
+Human only clicks once: approve or reject before spend commits.
+
+Deployed on Alibaba Function Compute. Real flights. Real hotels. Real decisions.
+
+🔗 openworld-alpha.vercel.app
+
+#QwenAI #AlibabaCloud #AIAgents #Rust #Hackathon
