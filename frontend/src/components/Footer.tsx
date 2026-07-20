@@ -15,7 +15,7 @@ export default function Footer() {
             </div>
             <p className="text-sm text-purple-500 leading-relaxed max-w-xs">
               Programmable autonomous travel infrastructure.
-              AI agents orchestrate real-world journeys and persist them on-chain as ERC-7857 NFTs.
+              Seven AI agents orchestrate real-world journeys powered by Qwen AI and Alibaba Cloud.
             </p>
             <div className="flex gap-3 mt-5">
               <a
@@ -27,7 +27,7 @@ export default function Footer() {
                 <Github size={16} className="text-purple-600" />
               </a>
               <a
-                href="https://0g.ai"
+                href="https://github.com"
                 target="_blank"
                 rel="noreferrer"
                 className="p-2 rounded-lg glass border border-purple-100/60 hover:bg-purple-50 transition-colors"
@@ -42,10 +42,10 @@ export default function Footer() {
             <div className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4">Infrastructure</div>
             <ul className="space-y-2">
               {[
-                { label: '0G Compute', href: 'https://0g.ai' },
-                { label: '0G Storage', href: 'https://0g.ai' },
-                { label: '0G Galileo Testnet', href: 'https://scan-testnet.0g.ai' },
-                { label: 'ERC-7857 Contract', href: 'https://scan-testnet.0g.ai/address/0xAF2699e9d306b57F5541aE3f04C43586589fD455' },
+                { label: 'Qwen AI', href: 'https://dashscope-intl.aliyuncs.com' },
+                { label: 'SerpAPI', href: 'https://serpapi.com' },
+                { label: 'Mapbox', href: 'https://mapbox.com' },
+                { label: 'GitHub', href: 'https://github.com/openworld-travel' },
               ].map(({ label, href }) => (
                 <li key={label}>
                   <a href={href} target="_blank" rel="noreferrer" className="text-sm text-purple-600 hover:text-purple-800 transition-colors">
@@ -70,11 +70,11 @@ export default function Footer() {
 
         <div className="pt-6 border-t border-purple-100/60 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-purple-400">
-            © 2026 OpenWorld. Built on <span className="text-purple-600 font-medium">0G Network</span>.
+            © 2026 OpenWorld. Autonomous agentic travel system.
           </p>
           <div className="flex items-center gap-4 text-xs text-purple-400">
-            <span className="font-mono">Chain: 16602</span>
-            <span className="font-mono">Contract: 0xAF26...D455</span>
+            <span className="font-mono">Powered by Qwen AI</span>
+            <span className="font-mono">Alibaba Cloud</span>
           </div>
         </div>
       </div>

@@ -25,7 +25,7 @@ export default function TxFeed({ txs, loading }: Props) {
         <div className="mb-10 flex items-center justify-between">
           <div>
             <h2 className="font-grotesk text-3xl font-bold text-purple-950">On-Chain Transactions</h2>
-            <p className="text-purple-500 mt-1">Live blockchain interactions — 0G Galileo testnet</p>
+            <p className="text-purple-500 mt-1">Live blockchain interactions</p>
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-green-600">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -37,7 +37,7 @@ export default function TxFeed({ txs, loading }: Props) {
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-16 text-purple-400">
               <Loader2 size={20} className="animate-spin" />
-              <span className="text-sm">Fetching from 0G Galileo…</span>
+              <span className="text-sm">Fetching transactions…</span>
             </div>
           ) : (
           <AnimatePresence initial={false}>
@@ -77,7 +77,7 @@ export default function TxFeed({ txs, loading }: Props) {
                       {tx.status.toUpperCase()}
                     </span>
                     <a
-                      href={`https://scan-testnet.0g.ai/tx/${tx.hash}`}
+                      href={`https://qwenhackkongphop.oss-ap-southeast-7.aliyuncs.com/artifacts/${tx.hash}.json`}
                       target="_blank"
                       rel="noreferrer"
                       className="p-1.5 rounded-lg hover:bg-purple-100 transition-colors"

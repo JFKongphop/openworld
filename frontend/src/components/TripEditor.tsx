@@ -5,7 +5,7 @@ import { CheckCircle, Clock, Hash, Play, FileText } from 'lucide-react'
 import { MOCK_TRIP_MD } from '../lib/mockData'
 
 interface Props {
-  onRun?: () => void
+  onRun?: (travelMd: string) => void
 }
 
 export default function TripEditor({ onRun }: Props) {
@@ -35,15 +35,15 @@ export default function TripEditor({ onRun }: Props) {
           </div>
           <div className="flex items-center gap-2 text-sm font-medium text-purple-700">
             <FileText size={14} />
-            <span className="font-mono">trip.md</span>
+            <span className="font-mono">trip.yaml</span>
           </div>
         </div>
         <button
-          onClick={onRun}
+          onClick={() => onRun?.(content)}
           className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 text-white text-xs font-semibold shadow-lg shadow-purple-300/30 hover:scale-105 transition-all duration-200"
         >
           <Play size={12} />
-          Run Journey
+          Launch Agents
         </button>
       </div>
 

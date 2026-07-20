@@ -1,12 +1,7 @@
 import { motion } from 'framer-motion'
-import { ExternalLink, Copy, MapPin, Calendar, DollarSign, Hash, Loader2 } from 'lucide-react'
+import { ExternalLink, Copy, MapPin, Calendar, DollarSign, Hash } from 'lucide-react'
 import { useState } from 'react'
-import type { JourneyArtifact } from '../lib/mockData'
-
-interface Props {
-  artifacts: JourneyArtifact[]
-  loading?: boolean
-}
+import { JOURNEY_ARTIFACTS, type JourneyArtifact } from '../lib/mockData'
 
 const DESTINATION_EMOJI: Record<string, string> = {
   Tokyo: '🗾',
@@ -20,7 +15,6 @@ const DESTINATION_EMOJI: Record<string, string> = {
 function ArtifactCard({ artifact }: { artifact: JourneyArtifact }) {
   const [copied, setCopied] = useState(false)
   const emoji = DESTINATION_EMOJI[artifact.destination] ?? DESTINATION_EMOJI.default
-
   const copy = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopied(true)
@@ -52,7 +46,7 @@ function ArtifactCard({ artifact }: { artifact: JourneyArtifact }) {
           </div>
         </div>
         <div className="absolute top-3 right-4 px-2.5 py-1 rounded-full bg-white/20 border border-white/30 text-white text-xs font-semibold">
-          #{artifact.tokenId} ERC-7857
+          Journey #{artifact.artifactId}
         </div>
       </div>
 
@@ -75,13 +69,13 @@ function ArtifactCard({ artifact }: { artifact: JourneyArtifact }) {
           ))}
         </div>
 
-        {/* Report hash */}
+        {/* Report link */}
         <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
-          <div className="text-xs text-purple-400 mb-1">Report Root Hash</div>
+          <div className="text-xs text-purple-400 mb-1">Artifact ID</div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-mono text-purple-700 truncate">{artifact.reportHash.slice(0, 22)}…</span>
+            <span className="text-xs font-mono text-purple-700 truncate">{artifact.sessionId.slice(0, 22)}…</span>
             <button
-              onClick={() => copy(artifact.reportHash)}
+              onClick={() => copy(artifact.sessionId)}
               className="flex-shrink-0 p-1 rounded hover:bg-purple-100 transition-colors"
             >
               {copied ? <span className="text-xs text-green-600">✓</span> : <Copy size={12} className="text-purple-400" />}
@@ -92,16 +86,16 @@ function ArtifactCard({ artifact }: { artifact: JourneyArtifact }) {
         {/* Actions */}
         <div className="flex gap-2 mt-auto">
           <a
-            href={`https://scan-testnet.0g.ai/tx/${artifact.txHash}`}
+            href={artifact.reportUrl}
             target="_blank"
             rel="noreferrer"
             className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 text-white text-xs font-semibold shadow hover:shadow-purple-300/50 hover:scale-105 transition-all duration-200"
           >
             <ExternalLink size={12} />
-            View on Explorer
+            View Artifact
           </a>
           <button
-            onClick={() => copy(artifact.txHash)}
+            onClick={() => copy(artifact.sessionId)}
             className="px-3 py-2.5 rounded-xl glass border border-purple-200/60 text-purple-600 text-xs font-semibold hover:bg-purple-50 transition-colors"
           >
             <Copy size={12} />
@@ -112,22 +106,19 @@ function ArtifactCard({ artifact }: { artifact: JourneyArtifact }) {
   )
 }
 
-export default function ArtifactGallery({ artifacts, loading }: Props) {
+export default function ArtifactGallery() {
+  const artifacts = JOURNEY_ARTIFACTS
   return (
     <section id="artifacts" className="px-6 py-16">
       <div className="max-w-7xl mx-auto">
         <div className="mb-10">
           <h2 className="font-grotesk text-3xl font-bold text-purple-950">Journey Artifacts</h2>
-          <p className="text-purple-500 mt-1">ERC-7857 intelligent NFTs — autonomous travel memories on-chain</p>
+          
+          <p className="text-purple-500 mt-1">Autonomous AI-generated travel itineraries, saved to cloud storage</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {loading ? (
-            <div className="col-span-3 flex items-center justify-center gap-3 py-20 text-purple-400">
-              <Loader2 size={24} className="animate-spin" />
-              <span className="text-sm">Loading journey artifacts from chain…</span>
-            </div>
-          ) : artifacts.map((a) => (
+          {artifacts.map((a) => (
             <ArtifactCard key={a.id} artifact={a} />
           ))}
 
@@ -142,7 +133,7 @@ export default function ArtifactGallery({ artifacts, loading }: Props) {
               <span className="text-2xl">✈️</span>
             </div>
             <div className="text-purple-700 font-semibold mb-1">Your next journey</div>
-            <div className="text-sm text-purple-400">Run a trip to mint your ERC-7857 artifact</div>
+            <div className="text-sm text-purple-400">Run a trip to generate your first artifact</div>
           </motion.div>
         </div>
       </div>

@@ -19,11 +19,11 @@ export default function LiveSystemStatus() {
   }, [])
 
   const services: ServiceStatus[] = [
-    { name: 'agents', label: 'Agents Online', icon: <Activity size={16} />, status: 'online', detail: '5 / 5 active' },
-    { name: 'compute', label: '0G Compute', icon: <Cpu size={16} />, status: 'online', detail: 'qwen-2.5-7b-instruct' },
-    { name: 'storage', label: '0G Storage', icon: <Database size={16} />, status: 'online', detail: 'indexer turbo' },
-    { name: 'contract', label: 'ERC-7857 Contract', icon: <FileCode size={16} />, status: 'online', detail: '0xAF26...D455' },
-    { name: 'rpc', label: '0G Galileo RPC', icon: <Server size={16} />, status: 'online', detail: 'chain 16602' },
+    { name: 'agents', label: 'Agents Online', icon: <Activity size={16} />, status: 'online', detail: '7 / 7 active' },
+    { name: 'compute', label: 'Qwen AI', icon: <Cpu size={16} />, status: 'online', detail: 'qwen3.7-max' },
+    { name: 'storage', label: 'OSS Storage', icon: <Database size={16} />, status: 'online', detail: 'Alibaba Cloud OSS' },
+    { name: 'logs', label: 'Log Service', icon: <FileCode size={16} />, status: 'online', detail: 'SLS logstore' },
+    { name: 'fc', label: 'Function Compute', icon: <Server size={16} />, status: 'online', detail: 'Alibaba Cloud FC' },
     { name: 'ws', label: 'WebSocket', icon: <Wifi size={16} />, status: tick % 6 === 0 ? 'syncing' : 'online', detail: 'live stream' },
   ]
 
@@ -47,8 +47,8 @@ export default function LiveSystemStatus() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="font-grotesk font-bold text-lg text-purple-950">System Runtime</h3>
-          <p className="text-xs text-purple-400 mt-0.5">Live cognition status</p>
+          <h3 className="font-grotesk font-bold text-lg text-purple-950">Agent Runtime</h3>
+          <p className="text-xs text-purple-400 mt-0.5">Live workflow execution</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 border border-green-200/60">
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />

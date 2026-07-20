@@ -23,7 +23,7 @@ export default function HeroSection() {
           >
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-xs font-semibold text-purple-700 tracking-widest uppercase">
-              Powered by 0G Compute + 0G Storage
+              AUTONOMOUS AI OPERATOR
             </span>
           </motion.div>
 
@@ -34,10 +34,9 @@ export default function HeroSection() {
             className="font-grotesk text-6xl lg:text-7xl font-bold leading-tight text-purple-950 mb-6"
           >
             Autonomous{' '}
-            <span className="gradient-text">Travel.</span>
+            <span className="gradient-text">Travel</span>
             <br />
-            Verifiable{' '}
-            <span className="gradient-text">On-Chain.</span>
+            Operations
           </motion.h1>
 
           <motion.p
@@ -46,10 +45,7 @@ export default function HeroSection() {
             transition={{ duration: 0.7, delay: 0.2 }}
             className="text-lg text-purple-700/80 leading-relaxed mb-10 max-w-xl"
           >
-            AI agents plan, search, reserve and persist journeys using{' '}
-            <span className="font-semibold text-purple-600">0G Compute</span> and{' '}
-            <span className="font-semibold text-purple-600">0G Storage</span>.
-            Every journey is an immutable ERC-7857 NFT on-chain.
+            OpenWorld automates travel workflows end-to-end. AI agents understand your request, research options, execute reservations, recover from failures, and ask for approval before critical decisions.
           </motion.p>
 
           <motion.div
@@ -62,14 +58,14 @@ export default function HeroSection() {
               href="#tripmded"
               className="flex items-center gap-2 px-7 py-3.5 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 text-white font-semibold shadow-xl shadow-purple-300/40 hover:shadow-purple-400/50 hover:scale-105 transition-all duration-200"
             >
-              Start New Journey
+              Launch Workflow
               <ArrowRight size={16} />
             </a>
             <a
               href="#artifacts"
               className="flex items-center gap-2 px-7 py-3.5 rounded-full glass border border-purple-200/60 text-purple-700 font-semibold hover:bg-purple-50/60 transition-all duration-200"
             >
-              View Artifacts
+              View Executions
             </a>
           </motion.div>
 
@@ -81,9 +77,9 @@ export default function HeroSection() {
             className="flex gap-10 mt-14"
           >
             {[
-              { icon: Globe, label: 'Journeys Executed', value: '1' },
-              { icon: Cpu, label: '0G Compute Sessions', value: '24+' },
-              { icon: Database, label: 'Root Hashes Stored', value: '2' },
+              { icon: Globe, label: 'Workflows Completed', value: '1' },
+              { icon: Cpu, label: 'Tasks Automated', value: '24+' },
+              { icon: Database, label: 'Recovery Success Rate', value: '2' },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label}>
                 <div className="text-2xl font-bold font-grotesk gradient-text">{value}</div>

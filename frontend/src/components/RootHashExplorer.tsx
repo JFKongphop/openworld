@@ -33,7 +33,7 @@ export default function RootHashExplorer({ rows, loading }: Props) {
       <div className="max-w-7xl mx-auto">
         <div className="mb-10">
           <h2 className="font-grotesk text-3xl font-bold text-purple-950">Root Hash Explorer</h2>
-          <p className="text-purple-500 mt-1">Decentralised memory on 0G Storage</p>
+          <p className="text-purple-500 mt-1">Decentralised memory — verifiable root hashes</p>
         </div>
 
         <div className="glass rounded-3xl overflow-hidden shadow-xl shadow-purple-200/20">
@@ -51,7 +51,7 @@ export default function RootHashExplorer({ rows, loading }: Props) {
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-16 text-purple-400">
               <Loader2 size={20} className="animate-spin" />
-              <span className="text-sm">Fetching from 0G Galileo…</span>
+              <span className="text-sm">Fetching hashes…</span>
             </div>
           ) : rows.map((row, i) => {
             const typeInfo = TYPE_STYLES[row.type]
@@ -113,7 +113,7 @@ export default function RootHashExplorer({ rows, loading }: Props) {
                     }
                   </button>
                   <a
-                    href={`https://scan-testnet.0g.ai/tx/${row.txHash}`}
+                    href={`https://qwenhackkongphop.oss-ap-southeast-7.aliyuncs.com/artifacts/${row.txHash}.json`}
                     target="_blank"
                     rel="noreferrer"
                     className="p-1.5 rounded-lg hover:bg-purple-100 transition-colors"
@@ -130,7 +130,7 @@ export default function RootHashExplorer({ rows, loading }: Props) {
           {!loading && rows.length === 0 && (
             <div className="px-6 py-16 text-center text-purple-400">
               <Database size={32} className="mx-auto mb-3 opacity-40" />
-              <p className="text-sm">No root hashes yet — run a journey to upload files to 0G Storage</p>
+              <p className="text-sm">No root hashes yet — run a journey to generate artifacts</p>
             </div>
           )}
         </div>

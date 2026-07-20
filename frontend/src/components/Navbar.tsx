@@ -20,13 +20,17 @@ export default function Navbar() {
 
         {/* Center Nav */}
         <div className="hidden md:flex items-center gap-1">
-          {['Dashboard', 'Artifacts', 'trip.md', 'Root Hashes', 'Explorer'].map((item) => (
+          {[
+            { label: 'How it works', href: '#tripmded' },
+            { label: 'Trip Editor',  href: '#tripmded' },
+            { label: 'Pipeline',     href: '#pipeline'  },
+          ].map((item) => (
             <a
-              key={item}
-              href={`#${item.toLowerCase().replace('.', '').replace(' ', '-')}`}
+              key={item.label}
+              href={item.href}
               className="px-4 py-2 text-sm font-medium text-purple-700 hover:text-purple-900 hover:bg-purple-50/60 rounded-lg transition-all duration-200"
             >
-              {item}
+              {item.label}
             </a>
           ))}
         </div>
@@ -34,16 +38,16 @@ export default function Navbar() {
         {/* Right */}
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50/80 border border-purple-200/50">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-xs font-medium text-purple-700">0G Galileo</span>
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs font-medium text-purple-700">API Online</span>
           </div>
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg glass-dark text-xs font-mono text-purple-700">
-            0x874604...24ae
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 text-white text-sm font-semibold shadow-lg shadow-purple-300/30 hover:shadow-purple-400/40 hover:scale-105 transition-all duration-200">
+          <a
+            href="#tripmded"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 text-white text-sm font-semibold shadow-lg shadow-purple-300/30 hover:shadow-purple-400/40 hover:scale-105 transition-all duration-200"
+          >
             <Zap size={14} />
-            <span>New Journey</span>
-          </button>
+            <span>New Workflow</span>
+          </a>
         </div>
       </div>
     </nav>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle, Package, DollarSign, Database, Cpu, Hash } from 'lucide-react'
+import type { BackendArtifact } from '../hooks/useSession'
 
 interface Metric {
   label: string
@@ -12,23 +13,33 @@ interface Metric {
   glow: string
 }
 
-export default function ExecutionMetrics() {
+interface Props {
+  artifact?: BackendArtifact | null
+}
+
+export default function ExecutionMetrics({ artifact }: Props) {
   const [counts, setCounts] = useState([0, 0, 0, 0, 0, 0])
 
+  const budgetUsed = artifact ? Math.round(artifact.total_spent_usd) : 985
+  const budgetTarget = 1500
+  const days = artifact ? artifact.duration_days : 5
+
   const metrics: Metric[] = [
-    { label: 'Agents Completed', value: 5, target: 5, unit: '', icon: <Cpu size={18} />, color: 'from-purple-500 to-purple-600', glow: 'shadow-purple-300/40' },
-    { label: 'Segments Reserved', value: 7, target: 7, unit: '', icon: <CheckCircle size={18} />, color: 'from-indigo-500 to-indigo-600', glow: 'shadow-indigo-300/40' },
-    { label: 'Budget Used', value: 985, target: 1500, unit: 'USD', icon: <DollarSign size={18} />, color: 'from-emerald-500 to-emerald-600', glow: 'shadow-emerald-300/40' },
-    { label: 'Root Hashes Stored', value: 2, target: 2, unit: '', icon: <Database size={18} />, color: 'from-pink-500 to-pink-600', glow: 'shadow-pink-300/40' },
-    { label: 'NFTs Minted', value: 1, target: 1, unit: '', icon: <Package size={18} />, color: 'from-violet-500 to-violet-600', glow: 'shadow-violet-300/40' },
-    { label: 'Txs Confirmed', value: 3, target: 3, unit: '', icon: <Hash size={18} />, color: 'from-sky-500 to-sky-600', glow: 'shadow-sky-300/40' },
+    { label: 'Agents Completed', value: 7, target: 7, unit: '', icon: <Cpu size={18} />, color: 'from-purple-500 to-purple-600', glow: 'shadow-purple-300/40' },
+    { label: 'Segments Reserved', value: days, target: days, unit: '', icon: <CheckCircle size={18} />, color: 'from-indigo-500 to-indigo-600', glow: 'shadow-indigo-300/40' },
+    { label: 'Budget Used', value: budgetUsed, target: budgetTarget, unit: 'USD', icon: <DollarSign size={18} />, color: 'from-emerald-500 to-emerald-600', glow: 'shadow-emerald-300/40' },
+    { label: 'Artifacts Saved', value: artifact ? 1 : 0, target: 1, unit: '', icon: <Database size={18} />, color: 'from-pink-500 to-pink-600', glow: 'shadow-pink-300/40' },
+    { label: 'Reports Generated', value: artifact ? 1 : 0, target: 1, unit: '', icon: <Package size={18} />, color: 'from-violet-500 to-violet-600', glow: 'shadow-violet-300/40' },
+    { label: 'Cloud Uploads', value: artifact ? 3 : 0, target: 3, unit: '', icon: <Hash size={18} />, color: 'from-sky-500 to-sky-600', glow: 'shadow-sky-300/40' },
   ]
 
-  // Count-up animation
+  // Count-up animation — re-run when artifact arrives
   useEffect(() => {
+    setCounts([0, 0, 0, 0, 0, 0])
+    const timers: ReturnType<typeof setInterval>[] = []
     metrics.forEach((m, i) => {
       let current = 0
-      const step = Math.ceil(m.value / 30)
+      const step = Math.max(1, Math.ceil(m.value / 30))
       const id = setInterval(() => {
         current = Math.min(current + step, m.value)
         setCounts((prev) => {
@@ -38,8 +49,11 @@ export default function ExecutionMetrics() {
         })
         if (current >= m.value) clearInterval(id)
       }, 40 + i * 10)
+      timers.push(id)
     })
-  }, [])
+    return () => timers.forEach(clearInterval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifact?.artifact_id])
 
   return (
     <section className="px-6 py-16">
