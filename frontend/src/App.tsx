@@ -4,16 +4,21 @@ import Navbar from './components/Navbar'
 import HeroSection from './components/HeroSection'
 import TripEditor from './components/TripEditor'
 import ActivityFeed from './components/ActivityFeed'
-import ExecutionMetrics from './components/ExecutionMetrics'
-import RootHashExplorer from './components/RootHashExplorer'
-import TxFeed from './components/TxFeed'
-import ArtifactGallery from './components/ArtifactGallery'
+import TripResult from './components/TripResult'
+import PipelineGraph from './components/PipelineGraph'
+import ApprovalGate from './components/ApprovalGate'
 import Footer from './components/Footer'
-import { useChainData } from './hooks/useChainData'
+import AgentShowcase from './components/AgentShowcase'
+import { useSession } from './hooks/useSession'
 
 export default function App() {
   const [runKey, setRunKey] = useState(0)
-  const { rootHashes, txEvents, artifacts, loading } = useChainData()
+  const { logs, pipelineState, isRunning, needsApproval, artifact, reportMd, runPipeline, approve, reject } = useSession()
+
+  const handleRun = (travelMd: string) => {
+    setRunKey((k) => k + 1)
+    runPipeline(travelMd)
+  }
 
   return (
     <div className="min-h-screen bg-[#F8F5FF] grid-bg relative">
@@ -30,32 +35,58 @@ export default function App() {
         {/* Hero */}
         <HeroSection />
 
+        {/* 7-Agent Showcase */}
+        <AgentShowcase />
+
         {/* Editor + Activity Feed */}
         <section id="tripmded" className="px-6 py-16">
           <div className="max-w-7xl mx-auto">
             <div className="mb-10">
-              <h2 className="font-grotesk text-3xl font-bold text-purple-950">Trip Policy Editor</h2>
-              <p className="text-purple-500 mt-1">Programme your autonomous travel agent with trip.md</p>
+              <h2 className="font-grotesk text-3xl font-bold text-purple-950">Workflow Policy Editor</h2>
+              <p className="text-purple-500 mt-1">Define your travel workflow in YAML. OpenWorld converts your policy into an autonomous execution plan.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[520px]">
-              <TripEditor onRun={() => setRunKey((k) => k + 1)} />
-              <ActivityFeed key={runKey} />
+              <TripEditor onRun={handleRun} />
+              <ActivityFeed logs={logs} isRunning={isRunning} />
             </div>
           </div>
         </section>
 
-        {/* Metrics */}
-        <ExecutionMetrics />
+        {/* Trip Result — appears after pipeline completes */}
+        {artifact && (
+          <section className="px-6 pb-4">
+            <div className="max-w-7xl mx-auto">
+              <TripResult artifact={artifact} reportMd={reportMd} />
+            </div>
+          </section>
+        )}
 
-        {/* Root Hash Explorer */}
-        <RootHashExplorer rows={rootHashes} loading={loading} />
+        {/* Pipeline Graph — slides in when pipeline starts, left=graph right=feed */}
+        {(isRunning || needsApproval || logs.length > 0) && (
+          <section className="px-6 pb-12" id="pipeline">
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-8">
+                <h2 className="font-grotesk text-3xl font-bold text-purple-950">Autonomous Workflow Execution</h2>
+                <p className="text-purple-500 mt-1">Live agent pipeline — each node activates as the agent runs</p>
+              </div>
 
-        {/* TX Feed */}
-        <TxFeed txs={txEvents} loading={loading} />
+              {/* Approval gate — shown as prominent banner when awaiting human decision */}
+              {needsApproval && (
+                <div className="mb-6">
+                  <ApprovalGate logs={logs} onApprove={approve} onReject={reject} />
+                </div>
+              )}
 
-        {/* Artifact Gallery */}
-        <ArtifactGallery artifacts={artifacts} loading={loading} />
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+                <PipelineGraph logs={logs} isRunning={isRunning} needsApproval={needsApproval} pipelineState={pipelineState} />
+                <div className="sticky top-24 h-[640px]">
+                  <ActivityFeed key={`feed-${runKey}`} logs={logs} isRunning={isRunning} needsApproval={needsApproval} />
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* CTA Banner */}
         <section className="px-6 py-16">
@@ -74,7 +105,7 @@ export default function App() {
                   Start Your <span className="gradient-text">Autonomous Journey</span>
                 </h2>
                 <p className="text-purple-600 mb-8 max-w-lg mx-auto">
-                  Edit trip.md, hit run. AI agents handle everything — flights, hotels, activities — and persist the result on-chain.
+                  Edit trip.md, hit run. AI agents handle everything — flights, hotels, activities — and save the full itinerary to cloud storage.
                 </p>
                 <div className="flex justify-center gap-4">
                   <a
@@ -84,12 +115,12 @@ export default function App() {
                     Open Editor
                   </a>
                   <a
-                    href="https://scan-testnet.0g.ai/address/0xAF2699e9d306b57F5541aE3f04C43586589fD455"
+                    href="https://github.com/openworld-travel"
                     target="_blank"
                     rel="noreferrer"
                     className="px-8 py-3.5 rounded-full glass border border-purple-200/60 text-purple-700 font-semibold hover:bg-purple-50 transition-all duration-200"
                   >
-                    View Contract
+                    View on GitHub
                   </a>
                 </div>
               </div>
